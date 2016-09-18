@@ -1,0 +1,6 @@
+[package]
+name = "udpserver"
+version = "0.1.0"
+authors = ["mang"]
+
+[dependencies]

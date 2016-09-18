@@ -1,0 +1,4 @@
+[root]
+name = "udpserver"
+version = "0.1.0"
+
