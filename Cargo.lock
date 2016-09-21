@@ -1,6 +1,7 @@
 [root]
 name = "udpserver"
 version = "0.1.0"
+<<<<<<< HEAD
 dependencies = [
  "bincode 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -36,4 +37,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "serde"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+=======
+>>>>>>> 4041e08fcf914d64512d1e52b827f90bc05a2b78
 
