@@ -4,3 +4,5 @@ version = "0.1.0"
 authors = ["mang"]
 
 [dependencies]
+rustc-serialize = "0.3"
+bincode = "0.6.0"
