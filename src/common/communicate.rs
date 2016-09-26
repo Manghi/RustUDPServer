@@ -83,11 +83,12 @@ mod test {
   use super::*;
 
   #[test]
+  // Send and listen to the same socket (listen_addr), from another socket (send_addr)
   fn test_udp() {
     println!("UDP");
     let ip = net::Ipv4Addr::new(127, 0, 0, 1);
-    let listen_addr = net::SocketAddrV4::new(ip, 8888);
-    let send_addr = net::SocketAddrV4::new(ip, 8889);
+    let listen_addr = net::SocketAddrV4::new(ip, get_port_client_listen());
+    let send_addr = net::SocketAddrV4::new(ip, get_port_server_listen());
     let future = listen(net::SocketAddr::V4(listen_addr));
     let message: Vec<u8> = vec![10];
  // give the thread 3s to open the socket

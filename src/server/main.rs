@@ -2,8 +2,6 @@ extern crate bincode;
 extern crate rustc_serialize;
 extern crate common;
 
-use std::thread;
-use std::time;
 use std::net;
 // use std::mem;
 // use std::fmt;
@@ -19,6 +17,8 @@ pub fn main()
     let server_send_addr = net::SocketAddrV4::new(ip, communicate::get_port_server_transmit());
     let server_listen_addr = net::SocketAddrV4::new(ip, communicate::get_port_server_listen());
 
+    // Receive messages indefinitely
+    // Might need to find a way to terminate early on specific error conditions
     loop
     {
         let future = communicate::listen(net::SocketAddr::V4(server_listen_addr));
@@ -32,15 +32,13 @@ pub fn main()
         println!("Got {} bytes", rcvdmsg.len());
         println!("{:?}", decoded);
 
+        // Construct reply
         let structmessage = Packet {
             header: UDPHeader { signature: ['L', 'I', 'F', 'E'] },
             data: UDPData { numerical: [1;10], textual: ['s','e','r','v','e','r',' ','h','i','i'], vector: vec![8675309, 10000, 2^32-1] },
         };
 
         println!("Message size: {} Bytes", structmessage.len());
-
-        // give the thread 3s to open the socket
-        // thread::sleep(time::Duration::from_millis(3000));
 
         {
             let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();

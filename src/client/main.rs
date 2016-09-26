@@ -2,8 +2,6 @@ extern crate bincode;
 extern crate rustc_serialize;
 extern crate common;
 
-use std::thread;
-use std::time;
 use std::net;
 //use std::mem;
 //use std::fmt;
@@ -20,6 +18,7 @@ pub fn main()
     let client_send_addr = net::SocketAddrV4::new(ip, communicate::get_port_client_transmit());
     let server_listen_addr = net::SocketAddrV4::new(ip, communicate::get_port_server_listen());
 
+    // Client will wait for reply on this socket
     let future = communicate::listen(net::SocketAddr::V4(client_listen_addr));
 
     let structmessage = Packet {
@@ -28,9 +27,6 @@ pub fn main()
     };
 
     println!("Message size: {} Bytes", structmessage.len());
-
-    // give the thread 3s to open the socket
-    thread::sleep(time::Duration::from_millis(3000));
 
     {
         let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
