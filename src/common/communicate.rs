@@ -2,7 +2,6 @@
     use std::net;
 
     const MAX_PACKET_SIZE: usize = 1472;
-    const something: usize = 0;
 
     fn socket(listen_on: net::SocketAddr) -> net::UdpSocket {
       let attempt = net::UdpSocket::bind(listen_on);
