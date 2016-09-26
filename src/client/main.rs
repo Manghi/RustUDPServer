@@ -13,18 +13,18 @@ use common::packet::{Packet, MyLen, UDPData, UDPHeader};
 
 pub fn main()
 {
-    println!("UDP");
+    println!("Client");
 
     let ip = net::Ipv4Addr::new(127, 0, 0, 1);
-    let listen_addr = net::SocketAddrV4::new(ip, 8888);
-    let send_addr = net::SocketAddrV4::new(ip, 8889);
+    let client_listen_addr = net::SocketAddrV4::new(ip, communicate::get_port_client_listen());
+    let client_send_addr = net::SocketAddrV4::new(ip, communicate::get_port_client_transmit());
+    let server_listen_addr = net::SocketAddrV4::new(ip, communicate::get_port_server_listen());
 
-    let future = communicate::listen(net::SocketAddr::V4(listen_addr));
-    //let message: Vec<u8> = vec![1;10];
+    let future = communicate::listen(net::SocketAddr::V4(client_listen_addr));
 
     let structmessage = Packet {
         header: UDPHeader { signature: ['L', 'I', 'F', 'E'] },
-        data: UDPData { numerical: [1;10], textual: ['a','b','c','d','e','f','g','h','i','j'], vector: vec![8675309, 10000, 2^32-1] },
+        data: UDPData { numerical: [1;10], textual: ['c','l','i','e','n','t',' ','h','i','i'], vector: vec![8675309, 10000, 2^32-1] },
     };
 
     println!("Message size: {} Bytes", structmessage.len());
@@ -32,19 +32,10 @@ pub fn main()
     // give the thread 3s to open the socket
     thread::sleep(time::Duration::from_millis(3000));
 
-/*        unsafe {
-        //let sentmessage1: Vec<u32> = std::mem::transmute(structmessage);
-        //let sentmessage: Vec<u8> = std::mem::transmute(sentmessage1);
-
-        let p: *const Packet = &structmessage;     // the same operator is used as with references
-        let p: *const u8 = p as *const u8;  // convert between pointer types
-        let sentmessage1: &[u8] =  slice::from_raw_parts(p, mem::size_of::<Packet>());
-        let sentmessage = Vec::from(sentmessage1);
-*/
-        {
-            let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
-            communicate::send_message(net::SocketAddr::V4(send_addr), net::SocketAddr::V4(listen_addr), sentmsg_encoded);
-        }
+    {
+        let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
+        communicate::send_message(net::SocketAddr::V4(client_send_addr), net::SocketAddr::V4(server_listen_addr), sentmsg_encoded);
+    }
 
     println!("Waiting");
 
@@ -55,6 +46,5 @@ pub fn main()
 
     println!("Got {} bytes", rcvdmsg.len());
     println!("{:?}", decoded);
-    assert_eq!(structmessage.len(), decoded.len());
-    assert_eq!(decoded, structmessage);
+
 }

@@ -3,6 +3,13 @@
 
     const MAX_PACKET_SIZE: usize = 1472;
 
+    enum Port {
+        ClientListen = 8888,
+        ClientTransmit = 8889,
+        ServerListen = 8890,
+        ServerTransmit = 8891
+    }
+
     fn socket(listen_on: net::SocketAddr) -> net::UdpSocket {
       let attempt = net::UdpSocket::bind(listen_on);
       let socket;
@@ -51,6 +58,21 @@
       handle
     }
 
+    pub fn get_port_client_listen() -> u16 {
+        Port::ClientListen as u16
+    }
+
+    pub fn get_port_client_transmit() -> u16 {
+        Port::ClientTransmit as u16
+    }
+
+    pub fn get_port_server_listen() -> u16 {
+        Port::ServerListen as u16
+    }
+
+    pub fn get_port_server_transmit() -> u16 {
+        Port::ServerTransmit as u16
+    }
 
 
 #[cfg(test)]
