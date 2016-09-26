@@ -1,5 +1,6 @@
 extern crate bincode;
 extern crate rustc_serialize;
+extern crate common;
 
 use std::thread;
 use std::time;
@@ -7,8 +8,7 @@ use std::net;
 use std::mem;
 use std::fmt;
 
-
-mod nethelper;
+use common::communicate;
 
 #[repr(packed)]
 #[derive(RustcEncodable, RustcDecodable, PartialEq)]
@@ -34,19 +34,19 @@ pub struct Packet {
 
 impl fmt::Debug for UDPHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self) 
+        write!(f, "{}", self)
     }
 }
 
 impl fmt::Debug for UDPData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self) 
+        write!(f, "{}", self)
     }
 }
 
 impl fmt::Debug for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self) 
+        write!(f, "{}", self)
     }
 }
 
@@ -87,7 +87,7 @@ pub fn main()
     let listen_addr = net::SocketAddrV4::new(ip, 8888);
     let send_addr = net::SocketAddrV4::new(ip, 8889);
 
-    let future = nethelper::listen(net::SocketAddr::V4(listen_addr));
+    let future = communicate::listen(net::SocketAddr::V4(listen_addr));
     //let message: Vec<u8> = vec![1;10];
 
     let structmessage = Packet {
@@ -111,16 +111,16 @@ pub fn main()
 */
         {
             let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
-            nethelper::send_message(net::SocketAddr::V4(send_addr), net::SocketAddr::V4(listen_addr), sentmsg_encoded);
+            communicate::send_message(net::SocketAddr::V4(send_addr), net::SocketAddr::V4(listen_addr), sentmsg_encoded);
         }
 
     println!("Waiting");
 
     let rcvdmsg = future.join().unwrap();
-    
+
     let decoded: Packet = bincode::rustc_serialize::decode(&rcvdmsg[..]).unwrap();
 
-    
+
     println!("Got {} bytes", rcvdmsg.len());
     println!("{:?}", decoded);
     assert_eq!(structmessage.len(), decoded.len());

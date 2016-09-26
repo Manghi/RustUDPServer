@@ -6,3 +6,15 @@ authors = ["mang"]
 [dependencies]
 rustc-serialize = "0.3"
 bincode = "0.6.0"
+
+[lib]
+name = "common"
+path = "src/common/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/server/main.rs"
+
+[[bin]]
+name = "client"
+path = "src/client/main.rs"
