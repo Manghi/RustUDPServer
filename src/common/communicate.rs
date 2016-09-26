@@ -1,6 +1,9 @@
     use std::thread;
     use std::net;
 
+    const MAX_PACKET_SIZE: usize = 1472;
+    const something: usize = 0;
+
     fn socket(listen_on: net::SocketAddr) -> net::UdpSocket {
       let attempt = net::UdpSocket::bind(listen_on);
       let socket;
@@ -15,7 +18,7 @@
     }
 
     fn read_message(socket: net::UdpSocket) -> Vec<u8> {
-      let mut buf: [u8; 1400] = [0; 1400];
+      let mut buf: [u8; MAX_PACKET_SIZE] = [0; MAX_PACKET_SIZE];
       println!("Reading data");
       let result = socket.recv_from(&mut buf);
       drop(socket);
