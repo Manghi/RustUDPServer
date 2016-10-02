@@ -9,7 +9,7 @@ use mio::*;
 use mio::deprecated::{EventLoop, Handler};
 use mio::udp::*;
 
-use common::communicate;
+//use common::communicate;
 use common::packet::{Packet, MyLen, UDPData, UDPHeader};
 
 pub const SERVER: Token = Token(10_000_000);

@@ -4,13 +4,11 @@
     const MAX_PACKET_SIZE: usize = 1472;
 
     enum Port {
-        ClientListen = 8888,
-        ClientTransmit = 8889,
-        ServerListen = 8890,
-        ServerTransmit = 8891
+        Client = 8888,
+        Server = 8890,
     }
 
-    fn socket(listen_on: net::SocketAddr) -> net::UdpSocket {
+    pub fn socket(listen_on: net::SocketAddrV4) -> net::UdpSocket {
       let attempt = net::UdpSocket::bind(listen_on);
       let socket;
       match attempt {
@@ -23,11 +21,11 @@
       socket
     }
 
-    fn read_message(socket: net::UdpSocket) -> Vec<u8> {
+    fn read_message(socket: &net::UdpSocket) -> Vec<u8> {
       let mut buf: [u8; MAX_PACKET_SIZE] = [0; MAX_PACKET_SIZE];
       println!("Reading data");
       let result = socket.recv_from(&mut buf);
-      drop(socket);
+      //drop(socket);
       let data;
       match result {
         Ok((amt, src)) => {
@@ -39,39 +37,31 @@
       data
     }
 
-    pub fn send_message(send_addr: net::SocketAddr, target: net::SocketAddr, data: Vec<u8>) {
-      let socket = socket(send_addr);
+    pub fn send_message(socket: &net::UdpSocket, target: net::SocketAddrV4, data: Vec<u8>) {
+      //let socket = socket(send_addr);
       println!("Sending data");
       let result = socket.send_to(&data, target);
-      drop(socket);
+      //drop(socket);
       match result {
         Ok(amt) => println!("Sent {} bytes", amt),
         Err(err) => panic!("Write error: {}", err)
       }
     }
 
-    pub fn listen(listen_on: net::SocketAddr) -> thread::JoinHandle<Vec<u8>> {
-      let socket = socket(listen_on);
-      let handle = thread::spawn(move || {
-        read_message(socket)
-      });
-      handle
+    pub fn listen(listen_on: &net::UdpSocket) -> thread::JoinHandle<Vec<u8>> {
+        //let socket = socket(listen_on);
+        let handle = thread::spawn(move || {
+            read_message(listen_on.try_clone().as_ref().unwrap());
+        });
+        handle
     }
 
-    pub fn get_port_client_listen() -> u16 {
-        Port::ClientListen as u16
+    pub fn get_port_client() -> u16 {
+        Port::Client as u16
     }
 
-    pub fn get_port_client_transmit() -> u16 {
-        Port::ClientTransmit as u16
-    }
-
-    pub fn get_port_server_listen() -> u16 {
-        Port::ServerListen as u16
-    }
-
-    pub fn get_port_server_transmit() -> u16 {
-        Port::ServerTransmit as u16
+    pub fn get_port_server() -> u16 {
+        Port::Server as u16
     }
 
 
