@@ -16,6 +16,7 @@ pub struct UDPData {
     pub numerical: [u8; 10],
     pub textual: [char;10],
     pub vector: Vec<u32>,
+    pub other: Vec<u32>,
 }
 
 #[repr(packed)]

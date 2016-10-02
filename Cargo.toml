@@ -6,6 +6,7 @@ authors = ["mang"]
 [dependencies]
 rustc-serialize = "0.3"
 bincode = "0.6.0"
+mio = "0.6"
 
 [lib]
 name = "common"
