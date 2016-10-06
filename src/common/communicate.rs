@@ -1,13 +1,31 @@
-    use std::thread;
+    extern crate mio;
+    //use std::thread;
     use std::net;
+    //use mio::*;
+    //use mio::udp::*;
 
-    const MAX_PACKET_SIZE: usize = 1472;
+    pub const MAX_PACKET_SIZE: usize = 1472;
 
     enum Port {
         Client = 8888,
         Server = 8890,
     }
 
+    pub fn socket(listen_on: net::SocketAddr) -> mio::udp::UdpSocket {
+      //let attempt = net::UdpSocket::bind(listen_on);
+      let attempt = mio::udp::UdpSocket::bind(&listen_on);
+      let socket;
+      match attempt {
+        Ok(sock) => {
+          println!("Bound socket to {}", listen_on);
+          socket = sock;
+        },
+        Err(err) => panic!("Could not bind: {}", err)
+      }
+      socket
+    }
+
+/*
     pub fn socket(listen_on: net::SocketAddrV4) -> net::UdpSocket {
       let attempt = net::UdpSocket::bind(listen_on);
       let socket;
@@ -20,6 +38,7 @@
       }
       socket
     }
+
 
     fn read_message(socket: &net::UdpSocket) -> Vec<u8> {
       let mut buf: [u8; MAX_PACKET_SIZE] = [0; MAX_PACKET_SIZE];
@@ -48,13 +67,14 @@
       }
     }
 
+
     pub fn listen(listen_on: &net::UdpSocket) -> thread::JoinHandle<Vec<u8>> {
         //let socket = socket(listen_on);
         let handle = thread::spawn(move || {
-            read_message(listen_on.try_clone().as_ref().unwrap());
+            read_message(&listen_on);//.try_clone().as_ref().unwrap());
         });
         handle
-    }
+    }*/
 
     pub fn get_port_client() -> u16 {
         Port::Client as u16

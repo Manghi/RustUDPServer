@@ -3,30 +3,31 @@ extern crate rustc_serialize;
 extern crate common;
 extern crate mio;
 
-use std::io;
+//use std::io;
 use std::net;
 use mio::*;
 use mio::deprecated::{EventLoop, Handler};
 use mio::udp::*;
 
-//use common::communicate;
-use common::packet::{Packet, MyLen, UDPData, UDPHeader};
+use common::communicate::*;
+use common::packet::{Packet};//, MyLen, UDPData, UDPHeader};
 
-pub const SERVER: Token = Token(10_000_000);
+pub const TOKEN_SERVER: Token = Token(10_000_000);
 
 pub struct UdpHandler {
-    rx: UdpSocket,
-    packetCounter: u32,
+    socket: UdpSocket,
+    packet_counter: u32,
 }
 
 impl UdpHandler {
-    fn new(rx: UdpSocket) -> UdpHandler {
+    fn new(socket: UdpSocket) -> UdpHandler {
         UdpHandler {
-            rx: rx,
-            packetCounter: 0,
+            socket: socket,
+            packet_counter: 0,
         }
     }
 }
+
 
 impl Handler for UdpHandler {
     type Timeout = ();
@@ -36,10 +37,10 @@ impl Handler for UdpHandler {
 
            if events.is_readable() {
                match token {
-                   SERVER => {
-                       let mut buf: [u8; 1472] = [0; 1472];
+                   TOKEN_SERVER => {
+                       let mut buf: [u8; MAX_PACKET_SIZE] = [0; MAX_PACKET_SIZE];
 
-                       let received = self.rx.recv_from(&mut buf);//.unwrap().unwrap();
+                       let received = self.socket.recv_from(&mut buf);//.unwrap().unwrap();
                        println!("Received datagram...");
 
                        if let Some((size, sock)) = received.unwrap() {//.unwrap();
@@ -51,7 +52,7 @@ impl Handler for UdpHandler {
 
                             let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
 
-                            self.packetCounter += 1;
+                            self.packet_counter += 1;
 
                             let retaddr = addr.unwrap();
                             println!("{}", retaddr);
@@ -60,13 +61,13 @@ impl Handler for UdpHandler {
                             let one_sec = std::time::Duration::from_millis(1000);
                             std::thread::sleep(one_sec);
 
-                            println!("{}", self.packetCounter);
+                            println!("{}", self.packet_counter);
 
                             // construct a reply
-                            self.rx.send_to(&buf[0..size], &addr.unwrap());
+                            let _ = self.socket.send_to(&buf[0..size], &addr.unwrap());
 
                            //println!("We are receiving a datagram now...");
-                          // println!("Packet: {:?}", decoded);
+                           println!("Packet: {:?}", decoded);
                           // event_loop.shutdown();
                        }
                    },
@@ -85,6 +86,7 @@ impl Handler for UdpHandler {
     }
 }
 
+/*
 fn socket(listen_on: net::SocketAddr) -> mio::udp::UdpSocket {
   //let attempt = net::UdpSocket::bind(listen_on);
   let attempt = mio::udp::UdpSocket::bind(&listen_on);
@@ -98,16 +100,17 @@ fn socket(listen_on: net::SocketAddr) -> mio::udp::UdpSocket {
   }
   socket
 }
+*/
 
 pub fn main()
 {
     let mut event_loop = EventLoop::new().unwrap();
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
-    let listen_addr = net::SocketAddrV4::new(ip, 8890);
+    let listen_addr = net::SocketAddrV4::new(ip, get_port_server());
     let skt = socket(net::SocketAddr::V4(listen_addr));
 
-    event_loop.register(&skt, SERVER, Ready::readable(), PollOpt::edge()).unwrap();
+    event_loop.register(&skt, TOKEN_SERVER, Ready::readable(), PollOpt::edge()).unwrap();
 
     let _ = event_loop.run(&mut UdpHandler::new(skt));
 }
