@@ -1,116 +1,67 @@
+extern crate mioco;
+extern crate env_logger;
 extern crate bincode;
 extern crate rustc_serialize;
 extern crate common;
-extern crate mio;
 
-//use std::io;
-use std::net;
-use mio::*;
-use mio::deprecated::{EventLoop, Handler};
-use mio::udp::*;
+use std::net::{SocketAddr, SocketAddrV4};
+use std::io;
+use mioco::udp::{UdpSocket};
+use mioco::mio::Ipv4Addr;
+use common::packet::*;
+use common::communicate;
 
-use common::communicate::*;
-use common::packet::{Packet};//, MyLen, UDPData, UDPHeader};
+static mut packet_counter : u16 = 0;
 
-pub const TOKEN_SERVER: Token = Token(10_000_000);
+fn listen_on_port(port: u16){
+    mioco::spawn(move || -> io::Result<()> {
+        let ip = Ipv4Addr::new(0, 0, 0, 0);
+        let addr = SocketAddr::V4(SocketAddrV4::new(ip, port));
 
-pub struct UdpHandler {
-    socket: UdpSocket,
-    packet_counter: u32,
-}
+        let mut sock = UdpSocket::v4().unwrap();
 
-impl UdpHandler {
-    fn new(socket: UdpSocket) -> UdpHandler {
-        UdpHandler {
-            socket: socket,
-            packet_counter: 0,
+        sock.bind(&addr).unwrap();
+        println!("Bound socket...");
+        let mut buf = [0u8; 1024 * 16];
+        loop {
+            //let mut tmpbuf = [1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9];
+            //println!("Sending...");
+            //try!(sock.send(&mut tmpbuf[0..10], &addr));
+            if let Some((len, addr)) = try!(sock.try_recv(&mut buf)) {
+                println!("Length: {}, Addr: {}", len, addr);
+                //for i in 0..len {
+                    //println!("Buffer: {:?}", buf[i]);
+
+
+                    let data = Vec::from(&buf[0..len]);
+
+                    let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
+
+                    unsafe {
+                        packet_counter+=1;
+                        println!("{}", packet_counter);
+                    }
+
+                    println!("{:?}", decoded);
+                //}
+                try!(sock.try_send(&mut buf[0..len], &addr));
+            }
         }
-    }
+
+    });
 }
 
+fn main() {
+    env_logger::init().unwrap();
 
-impl Handler for UdpHandler {
-    type Timeout = ();
-    type Message = u32;
+    mioco::start(move || {
+        println!("Starting udp echo server on port: {}", communicate::get_port_server());
 
-    fn ready(&mut self, event_loop: &mut EventLoop<UdpHandler>, token: Token, events: Ready) {
-
-           if events.is_readable() {
-               match token {
-                   TOKEN_SERVER => {
-                       let mut buf: [u8; MAX_PACKET_SIZE] = [0; MAX_PACKET_SIZE];
-
-                       let received = self.socket.recv_from(&mut buf);//.unwrap().unwrap();
-                       println!("Received datagram...");
-
-                       if let Some((size, sock)) = received.unwrap() {//.unwrap();
-
-                            let addr = Some(sock);
-                            //println!("bytes: {:?} from: {:?}", size, addr);
-
-                            let data = Vec::from(&buf[0..size]);
-
-                            let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
-
-                            self.packet_counter += 1;
-
-                            let retaddr = addr.unwrap();
-                            println!("{}", retaddr);
-
-
-                            let one_sec = std::time::Duration::from_millis(1000);
-                            std::thread::sleep(one_sec);
-
-                            println!("{}", self.packet_counter);
-
-                            // construct a reply
-                            let _ = self.socket.send_to(&buf[0..size], &addr.unwrap());
-
-                           //println!("We are receiving a datagram now...");
-                           println!("Packet: {:?}", decoded);
-                          // event_loop.shutdown();
-                       }
-                   },
-                   _ => ()
-               }
-           }
-
-           if events.is_writable() {
-               println!("Event is writable...");
-           }
-       }
-
-    fn notify(&mut self, event_loop: &mut EventLoop<UdpHandler>, msg: u32) {
-        println!("Message notify received: {}", msg);
-        event_loop.shutdown();
-    }
-}
-
-/*
-fn socket(listen_on: net::SocketAddr) -> mio::udp::UdpSocket {
-  //let attempt = net::UdpSocket::bind(listen_on);
-  let attempt = mio::udp::UdpSocket::bind(&listen_on);
-  let socket;
-  match attempt {
-    Ok(sock) => {
-      println!("Bound socket to {}", listen_on);
-      socket = sock;
-    },
-    Err(err) => panic!("Could not bind: {}", err)
-  }
-  socket
-}
-*/
-
-pub fn main()
-{
-    let mut event_loop = EventLoop::new().unwrap();
-
-    let ip = net::Ipv4Addr::new(0, 0, 0, 0);
-    let listen_addr = net::SocketAddrV4::new(ip, get_port_server());
-    let skt = socket(net::SocketAddr::V4(listen_addr));
-
-    event_loop.register(&skt, TOKEN_SERVER, Ready::readable(), PollOpt::edge()).unwrap();
-
-    let _ = event_loop.run(&mut UdpHandler::new(skt));
+        //for port in START_PORT..START_PORT+1 {
+            listen_on_port(communicate::get_port_server());
+            //listen_on_port(START_PORT+1);
+            println!("This is a test");
+            //listen_on_port(START_PORT+2);
+        //}
+    }).unwrap();
 }

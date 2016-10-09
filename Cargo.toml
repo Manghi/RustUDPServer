@@ -7,6 +7,8 @@ authors = ["mang"]
 rustc-serialize = "0.3"
 bincode = "0.6.0"
 mio = "0.6"
+mioco = "*"
+env_logger = "*"
 
 [lib]
 name = "common"
