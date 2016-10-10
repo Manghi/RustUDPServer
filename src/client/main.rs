@@ -1,107 +1,21 @@
+#[macro_use]
+extern crate mioco;
+extern crate mio;
+extern crate env_logger;
 extern crate bincode;
 extern crate rustc_serialize;
 extern crate common;
-extern crate mio;
 
-//use std::io;
 use std::net;
-use mio::*;
-use mio::deprecated::{EventLoop, Handler};
-use mio::udp::*;
+use std::thread;
+use std::time;
+use std::io::{self, BufRead, Write};
+use std::{str};
 
 use common::communicate::*;
 use common::packet::{Packet, MyLen, UDPData, UDPHeader};
 
-pub const TOKEN_SERVER: Token = Token(10_000_000);
-
-pub struct UdpHandler {
-    socket: UdpSocket,
-    packet_counter: u32,
-}
-
-impl UdpHandler {
-    fn new(socket: UdpSocket) -> UdpHandler {
-        UdpHandler {
-            socket: socket,
-            packet_counter: 0,
-        }
-    }
-}
-
-
-impl Handler for UdpHandler {
-    type Timeout = ();
-    type Message = u32;
-
-    fn ready(&mut self, event_loop: &mut EventLoop<UdpHandler>, token: Token, events: Ready) {
-
-           if events.is_readable() {
-               match token {
-                   TOKEN_SERVER => {
-                       let mut buf: [u8; MAX_PACKET_SIZE] = [0; MAX_PACKET_SIZE];
-
-                       let received = self.socket.recv_from(&mut buf);//.unwrap().unwrap();
-                       println!("Received datagram...");
-
-                       if let Some((size, sock)) = received.unwrap() {//.unwrap();
-
-                            let addr = Some(sock);
-                            //println!("bytes: {:?} from: {:?}", size, addr);
-
-                            let data = Vec::from(&buf[0..size]);
-
-                            let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
-
-                            self.packet_counter += 1;
-
-                            let retaddr = addr.unwrap();
-                            println!("{}", retaddr);
-
-
-                            //let one_sec = std::time::Duration::from_millis(1000);
-                            //std::thread::sleep(one_sec);
-
-                            println!("{}", self.packet_counter);
-
-                            // construct a reply
-                            let _ = self.socket.send_to(&buf[0..size], &addr.unwrap());
-
-                           //println!("We are receiving a datagram now...");
-                           println!("Packet: {:?}", decoded);
-                          // event_loop.shutdown();
-                       }
-                   },
-                   _ => ()
-               }
-           }
-
-           if events.is_writable() {
-               println!("Event is writable...");
-           }
-       }
-
-    fn notify(&mut self, event_loop: &mut EventLoop<UdpHandler>, msg: u32) {
-        println!("Message notify received: {}", msg);
-        event_loop.shutdown();
-    }
-}
-
 /*
-fn socket(listen_on: net::SocketAddr) -> mio::udp::UdpSocket {
-  //let attempt = net::UdpSocket::bind(listen_on);
-  let attempt = mio::udp::UdpSocket::bind(&listen_on);
-  let socket;
-  match attempt {
-    Ok(sock) => {
-      println!("Bound socket to {}", listen_on);
-      socket = sock;
-    },
-    Err(err) => panic!("Could not bind: {}", err)
-  }
-  socket
-}
-*/
-
 fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u16) {
     let send_addr1 = net::SocketAddrV4::new(*ip, port);
     let send_addr = net::SocketAddr::V4(send_addr1);
@@ -118,21 +32,162 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
 
     skt.send_to(sentmsg_encoded.as_slice(), &send_addr);
 }
+*/
 
-pub fn main()
-{
-    let mut event_loop = EventLoop::new().unwrap();
+fn print_help_menu() {
+    println!("
+Usage:
+    help    - print this menu
+    send    - send a message to the server
+    exit    - quit the client
+
+Example:
+    > help
+
+    > send
+
+    > exit
+
+");
+}
+
+
+fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u16) {
+    let send_addr1 = net::SocketAddrV4::new(*ip, port);
+    let send_addr = net::SocketAddr::V4(send_addr1);
+
+    let structmessage = Packet {
+            header: UDPHeader { signature: ['L', 'I', 'F', 'E'] },
+            data: UDPData { numerical: [1;10], textual: ['c','l','i','e','n','t',' ','h','i','i'], vector: vec![8675309, 10000, 2u32.pow(31)-1], other: vec![1;1392/4] },
+        };
+
+    //println!("Message size: {} Bytes", structmessage.len());
+
+    let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
+
+    let _ = skt.send_to(sentmsg_encoded.as_slice(), &send_addr);
+}
+
+fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
+                   tx_exit_thread: &mioco::sync::mpsc::SyncSender<String>) {
+
+    // temp, wait for other threads to instantiate
+    let one_sec = time::Duration::from_millis(1000);
+    thread::sleep(one_sec);
+
+    loop {
+        print!("> ");
+        io::stdout().flush().unwrap();
+
+        let stdin = io::stdin();
+        let mut line = String::new();
+
+        stdin.lock().read_line(&mut line).ok().expect("Failed to read line");
+
+        let line = line.parse::<String>().expect("Not a number");
+
+        let mut command : Vec<&str> = line.trim().split(';').collect();
+        //command[0].replace("\n","");
+
+        for i in 0..command.len() {
+            command[i] = command[i].trim();
+        }
+
+        //println!("Command: {:?}", command);
+
+        match command[0].as_ref() {
+            "help"  => {
+                        println!("Help menu...");
+                        print_help_menu();
+                    },
+            "send"  => {
+                        println!("Sending to server");
+                        let _ = tx_user_input.send(String::new());
+                    },
+            "exit" => {
+                        let _ = tx_exit_thread.send(String::new());
+                    },
+                  _ => println!("Command not recognized..."),
+        }
+
+    }
+}
+
+fn start_transfer_socket(skt: &mio::udp::UdpSocket, rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<std::string::String>) {
+    let ip = net::Ipv4Addr::new(0, 0, 0, 0);
+/*    let mut buf = [0u8; 1024*16];
+
+    loop {
+        if let Some((len, addr)) = skt.recv_from(&mut buf).unwrap() {
+            println!("Recieved!!!!!!!!!!!!!!!!");
+        }
+        let _m = rx_from_socket_chnl.try_recv().expect("No message");
+
+        if !_m.is_empty() {
+            send_to_localhost_port(&skt, &ip, 8890);// get_port_server());
+        }
+    }
+    */
+    let _m = rx_from_socket_chnl.recv();//.expect("No message");
+    send_to_localhost_port(&skt, &ip, 8890);// get_port_server());
+}
+
+fn listen_on_socket(skt: &mio::udp::UdpSocket) {
+
+    let mut buf = [0u8; 1024 * 16];
+
+    loop {
+        if let Some((len, addr)) = skt.recv_from(&mut buf).unwrap() {
+            println!("Length: {}, Addr: {}", len, addr);
+
+            let data = Vec::from(&buf[0..len]);
+
+            let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
+
+            println!("{:?}", decoded);
+        }
+    }
+}
+
+fn main() {
+    env_logger::init().unwrap();
+    let (tx_user_input, rx_user_input) = mioco::sync::mpsc::sync_channel::<String>(5);
+    let (tx_to_socket, rx_from_socket_chnl) = mioco::sync::mpsc::sync_channel::<String>(5);
+    let (tx_exit_thread, rx_exit_thread) = mioco::sync::mpsc::sync_channel::<String>(5);
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
-    let listen_addr = net::SocketAddrV4::new(ip, get_port_client());
-    let skt = socket(net::SocketAddr::V4(listen_addr));
-
-    send_to_localhost_port(&skt, &ip, get_port_server());
-    //send_to_localhost_port(&skt, &ip, 60001);
-    //send_to_localhost_port(&skt, &ip, 60002);
-
-    event_loop.register(&skt, TOKEN_SERVER, Ready::readable(), PollOpt::edge()).unwrap();
+    let listen_addr = net::SocketAddrV4::new(ip, 8888);//get_port_client());
+    let mut skt = socket(net::SocketAddr::V4(listen_addr));
 
 
-    let _ = event_loop.run(&mut UdpHandler::new(skt));
+    thread::spawn(move|| {
+        read_user_input(&tx_user_input, &tx_exit_thread);
+    });
+
+    thread::spawn(move|| {
+        start_transfer_socket(&skt, &rx_from_socket_chnl);
+    });
+
+/*
+    thread::spawn(move|| {
+        listen_on_socket(&skt);
+    });
+*/
+    mioco::start(move || {
+                loop {
+                    select!(
+                        r:rx_user_input => {
+                            let _m = rx_user_input.recv();
+                            let _ = tx_to_socket.send(String::new());
+                            //println!("1. Received ...");
+                            //println!("{:?}", message.unwrap());
+                        },
+                        r: rx_exit_thread => {
+                            let _m = rx_exit_thread.recv();
+                            println!("Gracefully exiting...");
+                            break;
+                        },
+                    );
+                }
+    }).unwrap();
 }
