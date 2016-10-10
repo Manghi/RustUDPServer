@@ -1,6 +1,8 @@
     extern crate mio;
+    extern crate net2;
     //use std::thread;
     use std::net;
+    use net2::UdpBuilder;
     //use mio::*;
     //use mio::udp::*;
 
@@ -13,12 +15,23 @@
 
     pub fn socket(listen_on: net::SocketAddr) -> mio::udp::UdpSocket {
       //let attempt = net::UdpSocket::bind(listen_on);
-      let attempt = mio::udp::UdpSocket::bind(&listen_on);
-      let socket;
-      match attempt {
+      //let attempt = mio::udp::UdpSocket::bind(&listen_on);
+
+      let udp = UdpBuilder::new_v4().unwrap();
+      udp.reuse_address(true);
+
+      let sock = udp.bind(listen_on);
+
+      let socket : mio::udp::UdpSocket;
+      match sock {
         Ok(sock) => {
           println!("Bound socket to {}", listen_on);
-          socket = sock;
+          sock.set_nonblocking(true);
+
+          socket = mio::udp::UdpSocket::from_socket(sock).unwrap();
+          //socket = mio::udp::UdpSocket::from(sock);
+
+          //socket = sock;
         },
         Err(err) => panic!("Could not bind: {}", err)
       }

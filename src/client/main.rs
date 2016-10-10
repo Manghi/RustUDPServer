@@ -61,7 +61,7 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
             data: UDPData { numerical: [1;10], textual: ['c','l','i','e','n','t',' ','h','i','i'], vector: vec![8675309, 10000, 2u32.pow(31)-1], other: vec![1;1392/4] },
         };
 
-    //println!("Message size: {} Bytes", structmessage.len());
+    println!("Message size: {} Bytes", structmessage.len());
 
     let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
 
@@ -96,6 +96,7 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
         //println!("Command: {:?}", command);
 
         match command[0].as_ref() {
+            ""      => {},
             "help"  => {
                         println!("Help menu...");
                         print_help_menu();
@@ -107,7 +108,9 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
             "exit" => {
                         let _ = tx_exit_thread.send(String::new());
                     },
-                  _ => println!("Command not recognized..."),
+            _      => {
+                        println!("Command not recognized...");
+                    },
         }
 
     }
@@ -128,12 +131,14 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket, rx_from_socket_chnl: &mioco:
         }
     }
     */
-    let _m = rx_from_socket_chnl.recv();//.expect("No message");
-    send_to_localhost_port(&skt, &ip, 8890);// get_port_server());
+    loop {
+        let _m = rx_from_socket_chnl.recv();//.expect("No message");
+        send_to_localhost_port(&skt, &ip, 8890);// get_port_server());
+    }
 }
 
-fn listen_on_socket(skt: &mio::udp::UdpSocket) {
-
+fn listen_on_socket(listen_addr: &net::SocketAddrV4) {
+    let skt = socket(net::SocketAddr::V4(*listen_addr));
     let mut buf = [0u8; 1024 * 16];
 
     loop {
@@ -159,7 +164,6 @@ fn main() {
     let listen_addr = net::SocketAddrV4::new(ip, 8888);//get_port_client());
     let mut skt = socket(net::SocketAddr::V4(listen_addr));
 
-
     thread::spawn(move|| {
         read_user_input(&tx_user_input, &tx_exit_thread);
     });
@@ -168,11 +172,11 @@ fn main() {
         start_transfer_socket(&skt, &rx_from_socket_chnl);
     });
 
-/*
+
     thread::spawn(move|| {
-        listen_on_socket(&skt);
+        listen_on_socket(&listen_addr);
     });
-*/
+
     mioco::start(move || {
                 loop {
                     select!(

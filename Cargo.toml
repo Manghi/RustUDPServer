@@ -9,6 +9,7 @@ bincode = "0.6.0"
 mio = "0.6"
 mioco = "*"
 env_logger = "*"
+net2 = "*"
 
 [lib]
 name = "common"
