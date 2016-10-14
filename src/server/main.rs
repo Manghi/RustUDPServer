@@ -1,4 +1,5 @@
 extern crate mioco;
+#[macro_use] extern crate log;
 extern crate env_logger;
 extern crate bincode;
 extern crate rustc_serialize;
@@ -18,33 +19,51 @@ fn listen_on_port(port: u16){
         let ip = Ipv4Addr::new(0, 0, 0, 0);
         let addr = SocketAddr::V4(SocketAddrV4::new(ip, port));
 
-        let mut sock = UdpSocket::v4().unwrap();
+        let mut sock;
+        match UdpSocket::v4(){ // .unwrap();
+            Ok(udpsocket) => {
+                sock = udpsocket
+            },
+            Err(_) => {
+                panic!("Could not create UdpSocket...");
+            }
+        }
 
-        sock.bind(&addr).unwrap();
-        println!("Bound socket...");
+        match sock.bind(&addr) {
+            Ok(_) => {
+                info!("Bound socket...");
+            },
+            Err(_) => {
+                panic!("Could not bind on {}", addr);
+            },
+        }
+
         let mut buf = [0u8; 1024 * 16];
+
         loop {
-            //let mut tmpbuf = [1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9];
-            //println!("Sending...");
-            //try!(sock.send(&mut tmpbuf[0..10], &addr));
+
             if let Some((len, addr)) = try!(sock.try_recv(&mut buf)) {
-                println!("Length: {}, Addr: {}", len, addr);
-                //for i in 0..len {
-                    //println!("Buffer: {:?}", buf[i]);
+                info!("Length: {}, Addr: {}", len, addr);
 
+                let data = Vec::from(&buf[0..len]);
 
-                    let data = Vec::from(&buf[0..len]);
+                match bincode::rustc_serialize::decode::<Packet>(&data[..]) {
+                    //  let decoded : Packet;
+                    Ok(decoded) => {
+                        info!("{:?}", decoded);
+                        try!(sock.try_send(&mut buf[0..len], &addr));
 
-                    let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
+                        // TODO: Please be safe!
+                        unsafe {
+                            packet_counter+=1;
+                            info!("{}", packet_counter);
+                        }
 
-                    unsafe {
-                        packet_counter+=1;
-                        println!("{}", packet_counter);
-                    }
-
-                    println!("{:?}", decoded);
-                //}
-                try!(sock.try_send(&mut buf[0..len], &addr));
+                    },
+                    Err(_) => {
+                        panic!("Could not decode message...");
+                    },
+                }
             }
         }
 
@@ -52,16 +71,20 @@ fn listen_on_port(port: u16){
 }
 
 fn main() {
-    env_logger::init().unwrap();
+
+    match env_logger::init() {
+        Ok(_) => {
+            info!("Environment logger started...");
+        }
+        Err(_) => {
+            debug!("Shits fucked up yo.");
+            return;
+        }
+    }
 
     mioco::start(move || {
         println!("Starting udp echo server on port: {}", communicate::get_port_server());
-
-        //for port in START_PORT..START_PORT+1 {
-            listen_on_port(communicate::get_port_server());
-            //listen_on_port(START_PORT+1);
-            println!("This is a test");
-            //listen_on_port(START_PORT+2);
-        //}
+        listen_on_port(communicate::get_port_server());
     }).unwrap();
+
 }

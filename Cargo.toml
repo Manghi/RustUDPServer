@@ -10,6 +10,7 @@ mio = "0.6"
 mioco = "*"
 env_logger = "*"
 net2 = "*"
+log = "*"
 
 [lib]
 name = "common"

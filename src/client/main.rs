@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate mioco;
 extern crate mio;
+#[macro_use] extern crate log;
 extern crate env_logger;
 extern crate bincode;
 extern crate rustc_serialize;
@@ -14,25 +15,6 @@ use std::{str};
 
 use common::communicate::*;
 use common::packet::{Packet, MyLen, UDPData, UDPHeader};
-
-/*
-fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u16) {
-    let send_addr1 = net::SocketAddrV4::new(*ip, port);
-    let send_addr = net::SocketAddr::V4(send_addr1);
-
-    let structmessage = Packet {
-            header: UDPHeader { signature: ['L', 'I', 'F', 'E'] },
-            data: UDPData { numerical: [1;10], textual: ['c','l','i','e','n','t',' ','h','i','i'], vector: vec![8675309, 10000, 2u32.pow(31)-1], other: vec![1;1392/4] },
-        };
-
-    println!("Message size: {} Bytes", structmessage.len());
-
-    let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
-    //udpHandler.socket.send_to(sentmsg_encoded.as_slice(), &net::SocketAddr::V4(target_addr));
-
-    skt.send_to(sentmsg_encoded.as_slice(), &send_addr);
-}
-*/
 
 fn print_help_menu() {
     println!("
@@ -51,7 +33,6 @@ Example:
 ");
 }
 
-
 fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u16) {
     let send_addr1 = net::SocketAddrV4::new(*ip, port);
     let send_addr = net::SocketAddr::V4(send_addr1);
@@ -61,11 +42,17 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
             data: UDPData { numerical: [1;10], textual: ['c','l','i','e','n','t',' ','h','i','i'], vector: vec![8675309, 10000, 2u32.pow(31)-1], other: vec![1;1392/4] },
         };
 
-    println!("Message size: {} Bytes", structmessage.len());
+    info!("Message size: {} Bytes", structmessage.len());
 
-    let sentmsg_encoded: Vec<u8> = bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite).unwrap();
-
-    let _ = skt.send_to(sentmsg_encoded.as_slice(), &send_addr);
+    match bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite) {
+        Ok(msg) => {
+            let encoded_packet : Vec<u8> = msg;
+            let _ = skt.send_to(encoded_packet.as_slice(), &send_addr);
+        },
+        Err(_) => {
+            panic!("Could not encode packet!");
+        }
+    }
 }
 
 fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
@@ -77,7 +64,7 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
 
     loop {
         print!("> ");
-        io::stdout().flush().unwrap();
+        let _ = io::stdout().flush();
 
         let stdin = io::stdin();
         let mut line = String::new();
@@ -93,7 +80,7 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
             command[i] = command[i].trim();
         }
 
-        //println!("Command: {:?}", command);
+        debug!("Command: {:?}", command);
 
         match command[0].as_ref() {
             ""      => {},
@@ -118,22 +105,18 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
 
 fn start_transfer_socket(skt: &mio::udp::UdpSocket, rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<std::string::String>) {
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
-/*    let mut buf = [0u8; 1024*16];
 
     loop {
-        if let Some((len, addr)) = skt.recv_from(&mut buf).unwrap() {
-            println!("Recieved!!!!!!!!!!!!!!!!");
-        }
-        let _m = rx_from_socket_chnl.try_recv().expect("No message");
+        let _m = rx_from_socket_chnl.recv();
 
-        if !_m.is_empty() {
-            send_to_localhost_port(&skt, &ip, 8890);// get_port_server());
+        match _m {
+            Ok(message) => {
+                if message == "xfer" {
+                    send_to_localhost_port(&skt, &ip, get_port_server());// get_port_server());
+                }
+            },
+            Err(_) => {}
         }
-    }
-    */
-    loop {
-        let _m = rx_from_socket_chnl.recv();//.expect("No message");
-        send_to_localhost_port(&skt, &ip, 8890);// get_port_server());
     }
 }
 
@@ -142,27 +125,43 @@ fn listen_on_socket(listen_addr: &net::SocketAddrV4) {
     let mut buf = [0u8; 1024 * 16];
 
     loop {
-        if let Some((len, addr)) = skt.recv_from(&mut buf).unwrap() {
-            println!("Length: {}, Addr: {}", len, addr);
+        match skt.recv_from(&mut buf) {
+            Ok(Some((len, addr))) => {
+                info!("Length: {}, Addr: {}", len, addr);
 
-            let data = Vec::from(&buf[0..len]);
+                let data = Vec::from(&buf[0..len]);
 
-            let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
+                let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
 
-            println!("{:?}", decoded);
+                info!("{:?}", decoded);
+            },
+            Ok(None) => {},
+            Err(_) => {
+                debug!("Failed... No data to receive.");
+            }
         }
     }
 }
 
 fn main() {
-    env_logger::init().unwrap();
+    
+    match env_logger::init() {
+        Ok(_) => {
+            info!("Environment logger started...");
+        }
+        Err(_) => {
+            debug!("Shits fucked up yo.");
+            return;
+        }
+    }
+
     let (tx_user_input, rx_user_input) = mioco::sync::mpsc::sync_channel::<String>(5);
     let (tx_to_socket, rx_from_socket_chnl) = mioco::sync::mpsc::sync_channel::<String>(5);
     let (tx_exit_thread, rx_exit_thread) = mioco::sync::mpsc::sync_channel::<String>(5);
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
     let listen_addr = net::SocketAddrV4::new(ip, 8888);//get_port_client());
-    let mut skt = socket(net::SocketAddr::V4(listen_addr));
+    let skt = socket(net::SocketAddr::V4(listen_addr));
 
     thread::spawn(move|| {
         read_user_input(&tx_user_input, &tx_exit_thread);
@@ -182,7 +181,7 @@ fn main() {
                     select!(
                         r:rx_user_input => {
                             let _m = rx_user_input.recv();
-                            let _ = tx_to_socket.send(String::new());
+                            let _ = tx_to_socket.send(String::from("xfer"));
                             //println!("1. Received ...");
                             //println!("{:?}", message.unwrap());
                         },
@@ -193,5 +192,6 @@ fn main() {
                         },
                     );
                 }
-    }).unwrap();
+    }).unwrap(); // It's alright if this code panics.
+    println!("Exiting client..");
 }
