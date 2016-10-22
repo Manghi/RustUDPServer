@@ -4,10 +4,25 @@
 use std::mem;
 use std::fmt;
 
+enum Actor {
+        SERVER,
+        CLIENT,
+}
+
+enum PacketDataType {
+        SYNC,
+        INSERTION,
+        CAMERA,
+
+}
+
 #[repr(packed)]
 #[derive(RustcEncodable, RustcDecodable, PartialEq)]
 pub struct UDPHeader {
     pub signature: [char; 4],
+    pub type: PacketDataType,
+    pub sequenceNumber: u32,
+    pub ack_bits: u32,
 }
 
 #[repr(packed)]
