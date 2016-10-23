@@ -37,7 +37,7 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
     let send_addr1 = net::SocketAddrV4::new(*ip, port);
     let send_addr = net::SocketAddr::V4(send_addr1);
 
-    let mut structmessage = build_packet();
+    let mut structmessage = Packet::new();
     structmessage.set_ack(4);
     structmessage.set_raw_data(vec![1,2,3,4,5,6,7,8,9]);
     structmessage.inc_sequence_num();

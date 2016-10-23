@@ -3,7 +3,7 @@
 
     use std::net;
     use net2::UdpBuilder;
-    use packet::*;
+    //use packet::Packet;
 
 
     enum Port {
@@ -64,78 +64,9 @@
         Port::Server as u16
     }
 
-
-    pub fn build_packet(  ) -> Packet {
-        Packet {
-               header: UDPHeader {
-                   signature: ['L', 'I', 'F', 'E'],
-                   crc32: 0,
-                   client_id: 0,
-                   sequence_number: 0,
-                   action_type: PacketDataType::SYNC,
-                   rsvd: [0;3],
-                   ack_num: 0,
-                   ack_bits: 0
-               },
-               data: UDPData {
-                   raw_data: vec![0;MAX_PACKET_SIZE - get_packet_header_size()],
-               },
-           }
-    }
-
+/*
 #[cfg(test)]
 mod test {
 
-    use utils::hash;
-    use communicate::*;
-
-    #[test]
-    fn test_client_id_hashing() {
-        let username = String::from("LifeUser1");
-        let hashed_username: u64 = hash(&username.clone());
-
-        println!("SOMETHING HERE");
-        println!("Hash: {}", hashed_username);
-
-    }
-
-    #[test]
-    // Send and listen to the same socket (listen_addr), from another socket (send_addr)
-    fn test_build_packet() {
-        let username = String::from("LifeUser1");
-        let hashed_username: u64 = hash(&username.clone());
-
-        println!("SOMETHING HERE");
-        println!("Hash: {}", hashed_username);
-
-        let mut synchronize_pkt = build_packet();
-
-
-        assert_eq!(0, synchronize_pkt.get_sequence_num());
-        synchronize_pkt.inc_sequence_num();
-        synchronize_pkt.inc_sequence_num();
-        assert_eq!(2, synchronize_pkt.get_sequence_num());
-
-        // Testing wrapped case
-        for _ in 0..32 {
-            synchronize_pkt.inc_sequence_num();
-        }
-        assert_eq!(2, synchronize_pkt.get_sequence_num());
-
-        synchronize_pkt.set_client_id(username);
-        assert_eq!(synchronize_pkt.get_client_id(), hashed_username);
-
-        synchronize_pkt.set_ack(5);
-        synchronize_pkt.set_ackbit(31);
-
-        assert_eq!(5, synchronize_pkt.get_ack());
-        assert_eq!(1, synchronize_pkt.is_ackbit_set(31));
-        assert_eq!(0, synchronize_pkt.is_ackbit_set(5));
-
-        let packet_data = vec![100, 3, 122, 255];
-        synchronize_pkt.set_raw_data(packet_data.clone());
-        assert_eq!(packet_data[2] , synchronize_pkt.get_data().raw_data[2]);
-
-    }
-
 }
+*/
