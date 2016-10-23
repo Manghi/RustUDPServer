@@ -1,37 +1,37 @@
 // Uses bincode, rustc_serialize
 // See lib.rs within this folder
 
-use std::mem;
-use std::fmt;
+use std::*;
 
 enum Actor {
         SERVER,
         CLIENT,
 }
 
-enum PacketDataType {
+#[derive(RustcEncodable, RustcDecodable, PartialEq)]
+pub enum PacketDataType {
         SYNC,
         INSERTION,
         CAMERA,
-
 }
 
 #[repr(packed)]
 #[derive(RustcEncodable, RustcDecodable, PartialEq)]
 pub struct UDPHeader {
     pub signature: [char; 4],
-    pub type: PacketDataType,
-    pub sequenceNumber: u32,
+    pub crc32: u32,
+    pub client_id: u32,         // hash of username?
+    pub action_type: PacketDataType,
+    pub rsvd: [u8;3],         // for word alignment
+    pub sequence_number: u32,
+    pub ack_num: u32,
     pub ack_bits: u32,
 }
 
 #[repr(packed)]
 #[derive(RustcEncodable, RustcDecodable, PartialEq)]
 pub struct UDPData {
-    pub numerical: [u8; 10],
-    pub textual: [char;10],
-    pub vector: Vec<u32>,
-    pub other: Vec<u32>,
+    pub raw_data : Vec<u8>,
 }
 
 #[repr(packed)]
@@ -40,6 +40,9 @@ pub struct Packet {
     pub header: UDPHeader,
     pub data: UDPData,
 }
+
+
+pub const MAX_PACKET_SIZE: usize = 1472;
 
 
 impl fmt::Debug for UDPHeader {
@@ -68,7 +71,7 @@ impl fmt::Display for UDPHeader {
 
 impl fmt::Display for UDPData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Numerical:{:?}\n  Textual:{:?}\n  Vector:{:?}", self.numerical, self.textual, self.vector)
+        write!(f, "Raw Data:{:?}\n", self.raw_data)
     }
 }
 
@@ -87,4 +90,32 @@ impl MyLen for Packet {
     fn len(&self) -> usize {
         mem::size_of::<Packet>()
     }
+}
+
+impl Packet {
+    pub fn set_raw_data(&mut self, data: Vec<u8>) {
+        mem::replace::<(Vec<u8>)>(&mut self.data.raw_data, data);
+    }
+
+    pub fn get_sequence_num(&self) -> u32 {
+        self.header.sequence_number
+    }
+
+    pub fn inc_sequence_num(&mut self) {
+        let mut next_seq_num = self.get_sequence_num();
+        next_seq_num += 1;
+        next_seq_num %= u32::MAX.count_ones();
+        self.header.sequence_number = next_seq_num;
+    }
+
+    pub fn set_ack(&mut self, ack: u32) {
+        self.header.ack_num = ack;
+    }
+
+}
+
+
+
+pub fn get_packet_header_size() -> usize {
+    mem::size_of::<UDPHeader>()
 }

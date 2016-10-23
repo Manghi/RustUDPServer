@@ -1,10 +1,11 @@
     extern crate mio;
     extern crate net2;
-    //use std::thread;
-    use std::net;
-    use net2::UdpBuilder;
 
-    pub const MAX_PACKET_SIZE: usize = 1472;
+    use std::net;
+    use std::mem;
+    use net2::UdpBuilder;
+    use packet::*;
+
 
     enum Port {
         Client = 8888,
@@ -64,6 +65,24 @@
         Port::Server as u16
     }
 
+
+    pub fn build_packet(  ) -> Packet {
+        Packet {
+               header: UDPHeader {
+                   signature: ['L', 'I', 'F', 'E'],
+                   crc32: 0,
+                   client_id: 0,
+                   sequence_number: 0,
+                   action_type: PacketDataType::SYNC,
+                   rsvd: [0;3],
+                   ack_num: 0,
+                   ack_bits: 0
+               },
+               data: UDPData {
+                   raw_data: vec![0;MAX_PACKET_SIZE - get_packet_header_size()],
+               },
+           }
+    }
 
 #[cfg(test)]
 mod test {

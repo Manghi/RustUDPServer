@@ -37,17 +37,18 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
     let send_addr1 = net::SocketAddrV4::new(*ip, port);
     let send_addr = net::SocketAddr::V4(send_addr1);
 
-    let structmessage = Packet {
-            header: UDPHeader { signature: ['L', 'I', 'F', 'E'] },
-            data: UDPData { numerical: [1;10], textual: ['c','l','i','e','n','t',' ','h','i','i'], vector: vec![8675309, 10000, 2u32.pow(31)-1], other: vec![1;1392/4] },
-        };
+    let mut structmessage = build_packet();
+    structmessage.set_ack(4);
+    structmessage.set_raw_data(vec![1,2,3,4,5,6,7,8,9]);
+    structmessage.inc_sequence_num();
 
-    info!("Message size: {} Bytes", structmessage.len());
+    println!("Message size: {} Bytes", structmessage.len());
 
     match bincode::rustc_serialize::encode(&structmessage, bincode::SizeLimit::Infinite) {
         Ok(msg) => {
             let encoded_packet : Vec<u8> = msg;
             let _ = skt.send_to(encoded_packet.as_slice(), &send_addr);
+            println!("Sent");
         },
         Err(_) => {
             panic!("Could not encode packet!");
@@ -112,7 +113,7 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket, rx_from_socket_chnl: &mioco:
         match _m {
             Ok(message) => {
                 if message == "xfer" {
-                    send_to_localhost_port(&skt, &ip, get_port_server());// get_port_server());
+                    send_to_localhost_port(&skt, &ip, get_port_server());
                 }
             },
             Err(_) => {}
@@ -144,7 +145,7 @@ fn listen_on_socket(listen_addr: &net::SocketAddrV4) {
 }
 
 fn main() {
-    
+
     match env_logger::init() {
         Ok(_) => {
             info!("Environment logger started...");
