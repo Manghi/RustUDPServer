@@ -2,11 +2,14 @@
 // See lib.rs within this folder
 
 use std::*;
+use utils::hash;
 
+/*
 enum Actor {
         SERVER,
         CLIENT,
 }
+*/
 
 #[derive(RustcEncodable, RustcDecodable, PartialEq)]
 pub enum PacketDataType {
@@ -20,7 +23,7 @@ pub enum PacketDataType {
 pub struct UDPHeader {
     pub signature: [char; 4],
     pub crc32: u32,
-    pub client_id: u32,         // hash of username?
+    pub client_id: u64,         // hash of username?
     pub action_type: PacketDataType,
     pub rsvd: [u8;3],         // for word alignment
     pub sequence_number: u32,
@@ -77,7 +80,7 @@ impl fmt::Display for UDPData {
 
 impl fmt::Display for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\nPacket:\n  {:?}\n  {:?}\n", self.header, self.data)
+        write!(f, "\nPacket:\n  {:?}\n  {:?}\n", self.header, self.get_data())
     }
 }
 
@@ -112,9 +115,34 @@ impl Packet {
         self.header.ack_num = ack;
     }
 
+    pub fn get_ack(&self) -> u32 {
+        self.header.ack_num
+    }
+
+    pub fn set_ackbit(&mut self, bit:u8) {
+        self.header.ack_bits |= 1<<bit;
+    }
+
+    pub fn get_ackbits(&self) -> u32 {
+        self.header.ack_bits
+    }
+
+    pub fn is_ackbit_set(&self, bit:u8) -> u32 {
+        (self.header.ack_bits>>bit) & 1
+    }
+
+    pub fn set_client_id(&mut self, client_name: String) {
+        self.header.client_id = hash(&client_name);
+    }
+
+    pub fn get_client_id(&self) -> u64 {
+        self.header.client_id
+    }
+
+    pub fn get_data(&self) -> &UDPData {
+        &self.data
+    }
 }
-
-
 
 pub fn get_packet_header_size() -> usize {
     mem::size_of::<UDPHeader>()

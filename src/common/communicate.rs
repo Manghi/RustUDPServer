@@ -2,7 +2,6 @@
     extern crate net2;
 
     use std::net;
-    use std::mem;
     use net2::UdpBuilder;
     use packet::*;
 
@@ -86,27 +85,42 @@
 
 #[cfg(test)]
 mod test {
-  use std::net;
-  use std::thread;
-  use std::time;
-  use super::*;
 
-  #[test]
-  // Send and listen to the same socket (listen_addr), from another socket (send_addr)
-  fn test_udp() {
-    println!("UDP");
-    let ip = net::Ipv4Addr::new(127, 0, 0, 1);
-    let listen_addr = net::SocketAddrV4::new(ip, get_port_client_listen());
-    let send_addr = net::SocketAddrV4::new(ip, get_port_server_listen());
-    let future = listen(net::SocketAddr::V4(listen_addr));
-    let message: Vec<u8> = vec![10];
- // give the thread 3s to open the socket
-    thread::sleep(time::Duration::from_millis(3000));
-    send_message(net::SocketAddr::V4(send_addr), net::SocketAddr::V4(listen_addr), message);
-    println!("Waiting");
-    let received = future.join().unwrap();
-    println!("Got {} bytes", received.len());
-    assert_eq!(1, received.len());
-    assert_eq!(10, received[0]);
-  }
+    use utils::hash;
+    use communicate::*;
+
+    #[test]
+    // Send and listen to the same socket (listen_addr), from another socket (send_addr)
+    fn test_build_packet() {
+        let username = String::from("LifeUser1");
+        let hashed_username: u64 = hash(&username.clone());
+        let mut synchronize_pkt = build_packet();
+
+        assert_eq!(0, synchronize_pkt.get_sequence_num());
+        synchronize_pkt.inc_sequence_num();
+        synchronize_pkt.inc_sequence_num();
+        assert_eq!(2, synchronize_pkt.get_sequence_num());
+
+        // Testing wrapped case
+        for _ in 0..32 {
+            synchronize_pkt.inc_sequence_num();
+        }
+        assert_eq!(2, synchronize_pkt.get_sequence_num());
+
+        synchronize_pkt.set_client_id(username);
+        assert_eq!(synchronize_pkt.get_client_id(), hashed_username);
+
+        synchronize_pkt.set_ack(5);
+        synchronize_pkt.set_ackbit(31);
+
+        assert_eq!(5, synchronize_pkt.get_ack());
+        assert_eq!(1, synchronize_pkt.is_ackbit_set(31));
+        assert_eq!(0, synchronize_pkt.is_ackbit_set(5));
+
+        let packet_data = vec![100, 3, 122, 255];
+        synchronize_pkt.set_raw_data(packet_data.clone());
+        assert_eq!(packet_data[2] , synchronize_pkt.get_data().raw_data[2]);
+
+    }
+
 }

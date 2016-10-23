@@ -14,7 +14,7 @@ use std::io::{self, BufRead, Write};
 use std::{str};
 
 use common::communicate::*;
-use common::packet::{Packet, MyLen, UDPData, UDPHeader};
+use common::packet::{Packet, MyLen};
 
 fn print_help_menu() {
     println!("
