@@ -11,7 +11,7 @@ enum Actor {
 }
 */
 
-#[derive(RustcEncodable, RustcDecodable, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
 pub enum PacketDataType {
         SYNC,
         INSERTION,
@@ -80,9 +80,23 @@ impl fmt::Display for UDPData {
 
 impl fmt::Display for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\nPacket:\n  {:?}\n  {:?}\n", self.header, self.get_data())
+        write!(f, "\nPacket:\n  {:?}\n  {:?}\n", self.header, self.data)
     }
 }
+
+/*
+impl fmt::Display for PacketDataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl fmt::Debug for PacketDataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+*/
 
 pub trait MyLen {
     fn len(&self) -> usize;
@@ -137,6 +151,14 @@ impl Packet {
 
     pub fn get_client_id(&self) -> u64 {
         self.header.client_id
+    }
+
+    pub fn get_action_type(&self) -> &PacketDataType {
+        &self.header.action_type
+    }
+
+    pub fn set_action_type(&mut self, action: PacketDataType) {
+        self.header.action_type = action;
     }
 
     pub fn get_data(&self) -> &UDPData {

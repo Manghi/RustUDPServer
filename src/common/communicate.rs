@@ -90,11 +90,26 @@ mod test {
     use communicate::*;
 
     #[test]
+    fn test_client_id_hashing() {
+        let username = String::from("LifeUser1");
+        let hashed_username: u64 = hash(&username.clone());
+
+        println!("SOMETHING HERE");
+        println!("Hash: {}", hashed_username);
+
+    }
+
+    #[test]
     // Send and listen to the same socket (listen_addr), from another socket (send_addr)
     fn test_build_packet() {
         let username = String::from("LifeUser1");
         let hashed_username: u64 = hash(&username.clone());
+
+        println!("SOMETHING HERE");
+        println!("Hash: {}", hashed_username);
+
         let mut synchronize_pkt = build_packet();
+
 
         assert_eq!(0, synchronize_pkt.get_sequence_num());
         synchronize_pkt.inc_sequence_num();
