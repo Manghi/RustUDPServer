@@ -6,6 +6,18 @@ pub fn hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
+pub fn bit_clr(x:&mut u32, y:u8) {
+    *x = *x & !(1<<y)
+}
+
+pub fn bit_set(x:&mut u32, y:u8) {
+    *x = *x | 1<<y
+}
+
+pub fn is_bit_set(x:u32, y:u8) -> bool {
+    ((x >> y) & 1) == 1
+}
+
 #[cfg(test)]
 mod test {
 

@@ -2,7 +2,7 @@
 // See lib.rs within this folder
 
 use std::*;
-use utils::hash;
+use utils::*;
 
 /*
 enum Actor {
@@ -11,7 +11,7 @@ enum Actor {
 }
 */
 
-#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
+#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug, Clone)]
 pub enum PacketDataType {
         SYNC,
         INSERTION,
@@ -19,7 +19,7 @@ pub enum PacketDataType {
 }
 
 #[repr(packed)]
-#[derive(RustcEncodable, RustcDecodable, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, PartialEq, Clone)]
 pub struct UDPHeader {
     pub signature: [char; 4],
     pub crc32: u32,
@@ -32,13 +32,13 @@ pub struct UDPHeader {
 }
 
 #[repr(packed)]
-#[derive(RustcEncodable, RustcDecodable, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, PartialEq, Clone)]
 pub struct UDPData {
     pub raw_data : Vec<u8>,
 }
 
 #[repr(packed)]
-#[derive(RustcEncodable, RustcDecodable, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, PartialEq, Clone)]
 pub struct Packet {
     pub header: UDPHeader,
     pub data: UDPData,
@@ -68,13 +68,13 @@ impl fmt::Debug for Packet {
 
 impl fmt::Display for UDPHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Signature:{:?}", self.signature)
+        write!(f, "Signature:{:?}\n  Sequence Number:{:?}", self.signature, self.sequence_number)
     }
 }
 
 impl fmt::Display for UDPData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Raw Data:{:?}\n", self.raw_data)
+        write!(f, "Raw Data:{:?}\n", 0)
     }
 }
 
@@ -153,7 +153,7 @@ impl Packet {
     }
 
     pub fn set_ackbit(&mut self, bit:u8) {
-        self.header.ack_bits |= 1<<bit;
+        bit_set(&mut self.header.ack_bits, bit)
     }
 
     pub fn get_ackbits(&self) -> u32 {
@@ -180,6 +180,10 @@ impl Packet {
         self.header.action_type = action;
     }
 
+    pub fn set_sequence_number(&mut self, seq_num: u32) {
+        self.header.sequence_number = seq_num
+    }
+
     pub fn get_data(&self) -> &UDPData {
         &self.data
     }
@@ -201,7 +205,6 @@ mod test {
         let username = String::from("LifeUser1");
         let hashed_username: u64 = hash(&username.clone());
 
-        println!("SOMETHING HERE");
         println!("Hash: {}", hashed_username);
 
         let mut synchronize_pkt = Packet::new();
