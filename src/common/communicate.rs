@@ -64,6 +64,10 @@
         Port::Server as u16
     }
 
+    pub fn is_sequence_more_recent( s1: u32, s2: u32,  max: u32 ) -> bool {
+        ((s1 > s2) && (s1 - s2 <= max/2)) || ((s2 > s1) && (s2 - s1 > max/2))
+    }
+
 /*
 #[cfg(test)]
 mod test {

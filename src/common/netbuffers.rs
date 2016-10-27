@@ -1,22 +1,93 @@
-// We need a buffer for a sliding window of 32 packets
-// We need a buffer for acks for those packets
-// We need a buffer for ????
+/*
+ * A NetworkBufferManager is used to keep track of what packets we have receieved thus far. It is not meant
+ * to act as a buffer that is filled and then processed. Packets are processed immediately upon recepient.
+ *
+ * In this section I will use "sender" and "receiver" to indicate xfer between client and server.
+ *
+ * Normal case is that sender will send a stream of sequential packets. They will buffer each packet
+ * only to discard when the receiver has confirmed the arrival of the packet. It will keep track of
+ * which packets it has sent so far. This is used later on (see below). The receiver will then,
+ * upon arrival of packet X, will flip the Xth ACK bit and process the packet. After processing,
+ * they will reply to the sender with an ACK packet. This contains a bitmap of all ACKS receieved.
+ *
+ * When an ACK pkt is received by the Sender, XOR this value with its own knowledge of what it has sent.
+ * The resulting set bits will determine which packets the sender sent by never were received by the
+ * receiver. These now become candidate for high priority packets.
+ *
+ * Not all packets will be considered high priority. It depends on the message packet type and
+ * its contents. You wouldn't want to resend a very stale, seconds-old packet.
+ * So far, I'm thinking game initiation, completion, and collision attacks will need to be resent.
+ * An option to maintain performance would be to interleve these resendable packets with the
+ * standard stream. We can only have a window of 32 packets so there may be some throttling involved
+ * when we do not wish to overwrite previous packets.
+ *
+ * Packets in groups of oldest 8 can be released after all have been received. The "elder" groups
+ * must be released sequentially. They cannot jump around. The exception to this is if
+ * there is a non-leading non-high priority missing packet, then we'll allow them to be released early.
+ * After some time, these packets will become expired so as to prevent the sender from starvation.
+ * Some of these metrics will be a tuneable parameter as it requires testing.
+ *
+ * Consider the following:
+ *
+ * Newest                       Oldest
+ *      (4)      (3)      (2)      (1)
+ * 0b01111111_11110111_10101111_11111111
+ *                      H H
+ *  Group 1 can be released early as all sent packets have been received.
+ *  Group 3 cannot be released until group 2 has been released.
+ *  Group 2 cannot release until its HP packets have been received by the receiver.
+ *  Group 4 cannot be released because its leading packet has not been receieved. It may expire.
+ *
+ *
+ * The ACK reply can be embedded in its own packets-to-send. A timer might be used to determine when
+ * to send a periodic ACK if the receiver has no need for packets-to-send.
+ *
+ *
+ * Sample flow:
+ *          CLIENT                                                  SERVER
+ *
+ *          Send Packet_0                 ----->                Receive Packet_0
+ *                                                              Process Packet_0
+ *          Receive ACK (RAck=0b0001)     <-----                Send ACK
+ *          XOR (RAck^Sent_Packets). No HP promotions.
+ *          Send Packet_1                 ----->                N/A
+ *          Send Packet_2                 ----->                N/A
+ *          Send Packet_3                 ----->                Receive Packet_3
+ *                                                              Process Packet_3
+ *          Receive ACK (RAck=0b1001)     <-----                Send ACK
+ *          XOR == (0b0110).
+ *          Evaluate HP candiacy of Packet 1 & 2.
+ *          HP = {Packet_1 and _2}
+ *          Send Packet_1                 ----->                N/A
+ *          Send Packet_2                 ----->                Receive Packet_2
+ *                                                              Process Packet_2
+ *          Receive ACK (RAck=0b1101)     <-----                Send ACK
+ *          Evaluate HP candidacy. Packet 1 already HP.
+ *          HP = {Packet_1}
+ *          Send Packet_2                 ----->                Receive Packet_1
+ *                                                              Process Packet_1
+ *          Receive ACK (RAck=0b1111)     <-----                Send ACK
+ *          All sent bits received.
+ *          Process/Wait for more packets.
+ */
 
 use packet::Packet;
 
 const MAX_PACKET_BUFFER_SIZE: usize = 32;
 
 #[derive(PartialEq)]
-enum NetworkBufferProbe {
+enum NetworkBufferManagerProbe {
     Inserted,
     Exists,
     Full,
 //    Empty,
 }
 
-struct NetworkBuffer {
-        tx_packets: Vec<Packet>,
+struct NetworkBufferManager {
+        sent_packet_buffer: Vec<Packet>,
+        tx_packets: Vec<bool>,
         rx_acks: Vec<bool>,
+        high_priority_acks:Vec<bool>,
         length: usize,
 }
 
@@ -28,15 +99,16 @@ struct NetStatistics {
 }
 */
 
-impl NetworkBuffer {
+impl NetworkBufferManager {
 
-    fn new() -> NetworkBuffer {
-        NetworkBuffer {
-            //tx_packets: Vec::with_capacity(MAX_PACKET_BUFFER_SIZE),
-            //rx_acks: Vec::with_capacity(MAX_PACKET_BUFFER_SIZE),
-            tx_packets: vec![Packet::new(); MAX_PACKET_BUFFER_SIZE],
+    fn new() -> NetworkBufferManager {
+        NetworkBufferManager {
+            sent_packet_buffer: vec![Packet::new(); MAX_PACKET_BUFFER_SIZE],
+            tx_packets: vec![false; MAX_PACKET_BUFFER_SIZE],
             rx_acks: vec![false; MAX_PACKET_BUFFER_SIZE],
-            length: 0,
+            high_priority_acks: vec![false; MAX_PACKET_BUFFER_SIZE],
+            length : 0,
+
         }
     }
 
@@ -44,9 +116,9 @@ impl NetworkBuffer {
         self.length
     }
 
-    fn insert(&mut self, packet: &Packet) -> Result<NetworkBufferProbe, NetworkBufferProbe> {
+    fn insert(&mut self, packet: &Packet) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
         if self.is_full() {
-            return Result::Err(NetworkBufferProbe::Full)
+            return Result::Err(NetworkBufferManagerProbe::Full)
         }
         else {
             let ack_indx = packet.get_sequence_num() % 32;
@@ -55,14 +127,14 @@ impl NetworkBuffer {
             // If we've already received a packet with this ack# ignore it
             if !self.rx_acks[ack_num] {
 
-                self.tx_packets[ack_num] = packet.clone();
+                self.sent_packet_buffer[ack_num] = packet.clone();
                 self.rx_acks[ack_num] = true;
                 self.length += 1;
 
-                return Result::Ok(NetworkBufferProbe::Inserted)
+                return Result::Ok(NetworkBufferManagerProbe::Inserted)
             }
             else {
-                return Result::Ok(NetworkBufferProbe::Exists)
+                return Result::Ok(NetworkBufferManagerProbe::Exists)
             }
         }
     }
@@ -74,29 +146,29 @@ impl NetworkBuffer {
 
 
 // --------------------------
-// |   NetworkBuffer Tests  |
+// |   NetworkBufferManager Tests  |
 // --------------------------
 
 #[cfg(test)]
 mod test {
         use packet::Packet;
-        use netbuffers::{NetworkBuffer, MAX_PACKET_BUFFER_SIZE, NetworkBufferProbe};
+        use netbuffers::{NetworkBufferManager, MAX_PACKET_BUFFER_SIZE, NetworkBufferManagerProbe};
         use utils::*;
 
         #[test]
         fn test_network_buffer_creation() {
-            let udp_buffer: NetworkBuffer = NetworkBuffer::new();
+            let udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
 
-            assert_eq!(udp_buffer.tx_packets.len(), MAX_PACKET_BUFFER_SIZE);
+            assert_eq!(udp_buffer.sent_packet_buffer.len(), MAX_PACKET_BUFFER_SIZE);
             assert_eq!(udp_buffer.rx_acks.len(), MAX_PACKET_BUFFER_SIZE);
 
-            assert_eq!(udp_buffer.tx_packets.capacity(), MAX_PACKET_BUFFER_SIZE);
+            assert_eq!(udp_buffer.sent_packet_buffer.capacity(), MAX_PACKET_BUFFER_SIZE);
             assert_eq!(udp_buffer.rx_acks.capacity(), MAX_PACKET_BUFFER_SIZE);
         }
 
         #[test]
         fn test_network_buffer_insertion() {
-            let mut udp_buffer: NetworkBuffer = NetworkBuffer::new();
+            let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
             let mut temp_packet: Packet = Packet::new();
             let user_name = String::from("network buffer tester");
             let seq_num :u32 = 1000;
@@ -109,10 +181,10 @@ mod test {
             match udp_buffer.insert(&temp_packet) {
                 Ok(n) => {
 
-                    if n == NetworkBufferProbe::Inserted {
+                    if n == NetworkBufferManagerProbe::Inserted {
                         println!("[test_network_buffer_insertion] Packet inserted successfully.");
 
-                        let inserted_packet: &Packet = &udp_buffer.tx_packets[bfr_index];
+                        let inserted_packet: &Packet = &udp_buffer.sent_packet_buffer[bfr_index];
 
                         println!("{:?}", inserted_packet);
 
@@ -134,7 +206,7 @@ mod test {
 
         #[test]
         fn test_network_buffer_fill() {
-            let mut udp_buffer: NetworkBuffer = NetworkBuffer::new();
+            let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
             let mut seq_num: u32 = 1000;
 
             for x in 0..33 {
@@ -152,16 +224,16 @@ mod test {
 
                     Ok(n) => {
 
-                        if n == NetworkBufferProbe::Inserted {
+                        if n == NetworkBufferManagerProbe::Inserted {
                             println!("Packet inserted successfully.");
 
-                            let inserted_packet: &Packet = &udp_buffer.tx_packets[index];
+                            let inserted_packet: &Packet = &udp_buffer.sent_packet_buffer[index];
                             //let ack_bits = inserted_packet.get_ackbits();
 
                             //assert_eq!(is_bit_set(ack_bits, ack_bit), true);
                             assert_eq!(inserted_packet.get_sequence_num(), seq_num as u32);
                         }
-                        else if n == NetworkBufferProbe::Exists {
+                        else if n == NetworkBufferManagerProbe::Exists {
                             println!("Packet already present in buffer.");
                         }
                     },
@@ -170,7 +242,7 @@ mod test {
                         // In this case we will have wrapped on our buffer and have tried to insert
                         // packet#33 of seq_num=1032.
 
-                        let last_inserted_packet : &Packet = &udp_buffer.tx_packets[index-1];
+                        let last_inserted_packet : &Packet = &udp_buffer.sent_packet_buffer[index-1];
 
                         assert_eq!(x, 32);
                         assert_eq!(last_inserted_packet.get_sequence_num(), 1031);
@@ -181,11 +253,19 @@ mod test {
             }
         }
 
-        fn test_network_buffer_peek() {
+        fn test_network_buffer_received() {
 
         }
 
-        fn test_network_buffer_remove() {
+        fn test_network_buffer_send_receive_sequence_normal() {
+
+        }
+
+        fn test_network_buffer_send_receive_sequence_dropped_packets() {
+
+        }
+
+        fn test_network_buffer_send_receive_sequence_high_priority_packets() {
 
         }
 

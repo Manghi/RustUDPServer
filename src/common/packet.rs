@@ -16,6 +16,8 @@ pub enum PacketDataType {
         SYNC,
         INSERTION,
         CAMERA,
+        // Maybe elaborate: start game, end game,
+        // certain sync types are HP.
 }
 
 #[repr(packed)]
