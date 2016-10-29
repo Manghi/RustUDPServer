@@ -5,6 +5,7 @@ extern crate mio;
 extern crate net2;
 #[macro_use] extern crate log;
 extern crate env_logger;
+extern crate crc;
 
 pub mod communicate;
 pub mod packet;

@@ -78,16 +78,19 @@ const MAX_PACKET_BUFFER_SIZE: usize = 32;
 #[derive(PartialEq)]
 enum NetworkBufferManagerProbe {
     Inserted,
+    Removed,
     Exists,
     Full,
-//    Empty,
+    Empty,
 }
 
 struct NetworkBufferManager {
         sent_packet_buffer: Vec<Packet>,
         tx_packets: Vec<bool>,
+
         rx_acks: Vec<bool>,
-        high_priority_acks:Vec<bool>,
+        high_priority_acks: Vec<bool>,
+
         length: usize,
 }
 
@@ -128,7 +131,7 @@ impl NetworkBufferManager {
             if !self.rx_acks[ack_num] {
 
                 self.sent_packet_buffer[ack_num] = packet.clone();
-                self.rx_acks[ack_num] = true;
+                self.tx_packets[ack_num] = true;
                 self.length += 1;
 
                 return Result::Ok(NetworkBufferManagerProbe::Inserted)
@@ -139,8 +142,33 @@ impl NetworkBufferManager {
         }
     }
 
+    fn remove(&mut self, packet_index: usize) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
+        if !self.is_empty() {
+            self.tx_packets[packet_index] = false;
+            self.length -= 1;
+            self.sent_packet_buffer[packet_index] = Packet::new();
+            return Result::Ok(NetworkBufferManagerProbe::Removed)
+        }
+        else {
+            return Result::Err(NetworkBufferManagerProbe::Empty)
+        }
+    }
+
     fn is_full(&self) -> bool {
         (self.len() >= MAX_PACKET_BUFFER_SIZE)
+    }
+
+    fn is_empty(&self) -> bool {
+        (self.len() == 0)
+    }
+
+    fn promote_packets(&mut self) {
+        // *          XOR (rx_acks^tx_acks). No HP promotions.
+        for i in 0..MAX_PACKET_BUFFER_SIZE {
+            if self.rx_acks[i] ^ self.tx_packets[i] {
+                self.high_priority_acks[i] = true;
+            }
+        }
     }
 }
 
@@ -151,122 +179,212 @@ impl NetworkBufferManager {
 
 #[cfg(test)]
 mod test {
-        use packet::Packet;
-        use netbuffers::{NetworkBufferManager, MAX_PACKET_BUFFER_SIZE, NetworkBufferManagerProbe};
-        use utils::*;
+    use packet::Packet;
+    use netbuffers::{NetworkBufferManager, MAX_PACKET_BUFFER_SIZE, NetworkBufferManagerProbe};
+    use utils::*;
 
-        #[test]
-        fn test_network_buffer_creation() {
-            let udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
+    #[test]
+    fn test_network_buffer_creation() {
+        let udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
 
-            assert_eq!(udp_buffer.sent_packet_buffer.len(), MAX_PACKET_BUFFER_SIZE);
-            assert_eq!(udp_buffer.rx_acks.len(), MAX_PACKET_BUFFER_SIZE);
+        assert_eq!(udp_buffer.sent_packet_buffer.len(), MAX_PACKET_BUFFER_SIZE);
+        assert_eq!(udp_buffer.rx_acks.len(), MAX_PACKET_BUFFER_SIZE);
 
-            assert_eq!(udp_buffer.sent_packet_buffer.capacity(), MAX_PACKET_BUFFER_SIZE);
-            assert_eq!(udp_buffer.rx_acks.capacity(), MAX_PACKET_BUFFER_SIZE);
+        assert_eq!(udp_buffer.sent_packet_buffer.capacity(), MAX_PACKET_BUFFER_SIZE);
+        assert_eq!(udp_buffer.rx_acks.capacity(), MAX_PACKET_BUFFER_SIZE);
+    }
+
+    #[test]
+    fn test_network_buffer_insertion() {
+        let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
+        let mut temp_packet: Packet = Packet::new();
+        let user_name = String::from("network buffer tester");
+        let seq_num :u32 = 1000;
+        let bfr_index :usize = (seq_num as usize) % MAX_PACKET_BUFFER_SIZE;
+
+        temp_packet.set_sequence_number(seq_num);
+        temp_packet.set_client_id(user_name.clone());
+        temp_packet.set_ackbit(3); // assume we have already received ack for pkt 3
+
+        match udp_buffer.insert(&temp_packet) {
+            Ok(n) => {
+
+                if n == NetworkBufferManagerProbe::Inserted {
+                    println!("[test_network_buffer_insertion] Packet inserted successfully.");
+
+                    let inserted_packet: &Packet = &udp_buffer.sent_packet_buffer[bfr_index];
+
+                    println!("{:?}", inserted_packet);
+
+                    let ack_bits = inserted_packet.get_ackbits();
+
+                    assert_eq!(is_bit_set(ack_bits, 8), false); // We did not get the ack for this yet
+                    assert_eq!(inserted_packet.get_sequence_num(), 1000 as u32);
+                    assert_eq!(is_bit_set(ack_bits, 3), true);
+                    assert_eq!(is_bit_set(ack_bits, 0), false);
+                }
+                else {
+                    println!("[test_network_buffer_insertion] Packet already present in buffer.");
+                }
+            },
+            Err(_) => panic!("[test_network_buffer_insertion] Network Buffer is full! This should never occur."),
         }
 
-        #[test]
-        fn test_network_buffer_insertion() {
-            let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
+    }
+
+    #[test]
+    fn test_network_buffer_fill() {
+        let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
+        let mut seq_num: u32 = 1000;
+
+        for x in 0..33 {
             let mut temp_packet: Packet = Packet::new();
             let user_name = String::from("network buffer tester");
-            let seq_num :u32 = 1000;
-            let bfr_index :usize = (seq_num as usize) % MAX_PACKET_BUFFER_SIZE;
 
             temp_packet.set_sequence_number(seq_num);
+            //temp_packet.set_ack(ack_bit as u32);
+            //temp_packet.set_ackbit(ack_bit);
             temp_packet.set_client_id(user_name.clone());
-            temp_packet.set_ackbit(3); // assume we have already received ack for pkt 3
+
+            let index: usize = (seq_num as usize) % 32;
 
             match udp_buffer.insert(&temp_packet) {
+
                 Ok(n) => {
 
                     if n == NetworkBufferManagerProbe::Inserted {
-                        println!("[test_network_buffer_insertion] Packet inserted successfully.");
+                        println!("Packet inserted successfully.");
 
-                        let inserted_packet: &Packet = &udp_buffer.sent_packet_buffer[bfr_index];
+                        let inserted_packet: &Packet = &udp_buffer.sent_packet_buffer[index];
+                        //let ack_bits = inserted_packet.get_ackbits();
 
-                        println!("{:?}", inserted_packet);
-
-                        let ack_bits = inserted_packet.get_ackbits();
-
-                        assert_eq!(is_bit_set(ack_bits, 8), false); // We did not get the ack for this yet
-                        assert_eq!(inserted_packet.get_sequence_num(), 1000 as u32);
-                        assert_eq!(is_bit_set(ack_bits, 3), true);
-                        assert_eq!(is_bit_set(ack_bits, 0), false);
+                        //assert_eq!(is_bit_set(ack_bits, ack_bit), true);
+                        assert_eq!(inserted_packet.get_sequence_num(), seq_num as u32);
                     }
-                    else {
-                        println!("[test_network_buffer_insertion] Packet already present in buffer.");
+                    else if n == NetworkBufferManagerProbe::Exists {
+                        println!("Packet already present in buffer.");
                     }
                 },
-                Err(_) => panic!("[test_network_buffer_insertion] Network Buffer is full! This should never occur."),
-            }
+                Err(_) => {
 
+                    // In this case we will have wrapped on our buffer and have tried to insert
+                    // packet#33 of seq_num=1032.
+
+                    let last_inserted_packet : &Packet = &udp_buffer.sent_packet_buffer[index-1];
+
+                    assert_eq!(x, 32);
+                    assert_eq!(last_inserted_packet.get_sequence_num(), 1031);
+                    println!("Network Buffer is full! This should never occur.");
+                },
+            }
+            seq_num += 1;
+        }
+    }
+
+    #[test]
+    fn test_network_buffer_empty() {
+        let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
+
+        match udp_buffer.remove(0) {
+            Ok(_) => {
+                panic!("Network Buffer should be empty!")
+            },
+            Err(_) => {
+                assert_eq!(udp_buffer.len(), 0);
+                println!("Network Buffer is properly empty.");
+            }
+        }
+    }
+
+    #[test]
+    fn test_network_buffer_filled_then_emptied() {
+        let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
+
+        for x in 0..2 {
+            let index = x as u32;
+            let mut temp_packet: Packet = Packet::new();
+            let ack : u32 = index  % (MAX_PACKET_BUFFER_SIZE as u32);
+
+            temp_packet.set_sequence_number(index);
+            temp_packet.set_ack(ack);
+
+            udp_buffer.insert(&temp_packet);
         }
 
-        #[test]
-        fn test_network_buffer_fill() {
-            let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
-            let mut seq_num: u32 = 1000;
-
-            for x in 0..33 {
-                let mut temp_packet: Packet = Packet::new();
-                let user_name = String::from("network buffer tester");
-
-                temp_packet.set_sequence_number(seq_num);
-                //temp_packet.set_ack(ack_bit as u32);
-                //temp_packet.set_ackbit(ack_bit);
-                temp_packet.set_client_id(user_name.clone());
-
-                let index: usize = (seq_num as usize) % 32;
-
-                match udp_buffer.insert(&temp_packet) {
-
-                    Ok(n) => {
-
-                        if n == NetworkBufferManagerProbe::Inserted {
-                            println!("Packet inserted successfully.");
-
-                            let inserted_packet: &Packet = &udp_buffer.sent_packet_buffer[index];
-                            //let ack_bits = inserted_packet.get_ackbits();
-
-                            //assert_eq!(is_bit_set(ack_bits, ack_bit), true);
-                            assert_eq!(inserted_packet.get_sequence_num(), seq_num as u32);
-                        }
-                        else if n == NetworkBufferManagerProbe::Exists {
-                            println!("Packet already present in buffer.");
-                        }
-                    },
-                    Err(_) => {
-
-                        // In this case we will have wrapped on our buffer and have tried to insert
-                        // packet#33 of seq_num=1032.
-
-                        let last_inserted_packet : &Packet = &udp_buffer.sent_packet_buffer[index-1];
-
-                        assert_eq!(x, 32);
-                        assert_eq!(last_inserted_packet.get_sequence_num(), 1031);
-                        println!("Network Buffer is full! This should never occur.");
-                    },
+        let mut counter : u8 = 0;
+        for x in 0..4 {
+            match udp_buffer.remove(x) {
+                Ok(_) => {
+                    assert_eq!(udp_buffer.len(), 1-x);
+                },
+                Err(_) => {
+                    counter += 1;
+                    assert_eq!(udp_buffer.len(), 0);
                 }
-                seq_num += 1;
             }
         }
 
-        fn test_network_buffer_received() {
+        assert_eq!(counter, 2);
+    }
 
+    #[test]
+    fn test_network_buffer_promotion() {
+        let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
+
+        let to_be_high_priority = vec![0, 10, 20, 21, 31];
+
+        for x in to_be_high_priority.clone() {
+            let index = x as u32;
+            let mut temp_packet: Packet = Packet::new();
+            let ack : u32 = index  % (MAX_PACKET_BUFFER_SIZE as u32);
+
+            temp_packet.set_sequence_number(index);
+            temp_packet.set_ack(ack);
+
+            udp_buffer.insert(&temp_packet);
         }
 
-        fn test_network_buffer_send_receive_sequence_normal() {
+        // We have sent packets `to_be_high_priority` but no ack bits are set
+        // For now we'll consider these high priority regardless
+        // This will be fixed once the priority packets have been defined
 
+        udp_buffer.promote_packets();
+
+        for x in to_be_high_priority.clone() {
+            assert_eq!(udp_buffer.high_priority_acks[x], true);
         }
 
-        fn test_network_buffer_send_receive_sequence_dropped_packets() {
-
+        for x in 1..10 {
+            assert_eq!(udp_buffer.high_priority_acks[x], false);
         }
 
-        fn test_network_buffer_send_receive_sequence_high_priority_packets() {
-
+        for x in 11..20 {
+            assert_eq!(udp_buffer.high_priority_acks[x], false);
         }
+
+        for x in 22..30 {
+            assert_eq!(udp_buffer.high_priority_acks[x], false);
+        }
+    }
+
+    #[test]
+    fn test_network_buffer_received() {
+
+    }
+
+    #[test]
+    fn test_network_buffer_send_receive_sequence_normal() {
+
+    }
+
+    #[test]
+    fn test_network_buffer_send_receive_sequence_dropped_packets() {
+
+    }
+
+    #[test]
+    fn test_network_buffer_send_receive_sequence_high_priority_packets() {
+
+    }
 
 }

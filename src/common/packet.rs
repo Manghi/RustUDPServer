@@ -3,6 +3,7 @@
 
 use std::*;
 use utils::*;
+use crc::{crc32, Hasher32};
 
 /*
 enum Actor {
@@ -113,7 +114,7 @@ impl MyLen for Packet {
 
 impl Packet {
 
-    pub fn new( ) -> Packet {
+    pub fn new() -> Packet {
         Packet {
                header: UDPHeader {
                    signature: ['L', 'I', 'F', 'E'],
@@ -131,7 +132,7 @@ impl Packet {
            }
     }
 
-    pub fn set_raw_data(&mut self, data: Vec<u8>) {
+    pub fn set_data(&mut self, data: Vec<u8>) {
         mem::replace::<(Vec<u8>)>(&mut self.data.raw_data, data);
     }
 
@@ -189,6 +190,16 @@ impl Packet {
     pub fn get_data(&self) -> &UDPData {
         &self.data
     }
+
+    pub fn calculate_checksum(&mut self) {
+        let checksum = crc32::checksum_ieee(&self.data.raw_data);
+        println!("Checksum == {}", checksum);
+        self.header.crc32 = checksum;
+    }
+
+    pub fn get_checksum(&self) -> u32 {
+        self.header.crc32
+    }
 }
 
 pub fn get_packet_header_size() -> usize {
@@ -234,7 +245,35 @@ mod test {
         assert_eq!(0, synchronize_pkt.is_ackbit_set(5));
 
         let packet_data = vec![100, 3, 122, 255];
-        synchronize_pkt.set_raw_data(packet_data.clone());
+        synchronize_pkt.set_data(packet_data.clone());
         assert_eq!(packet_data[2] , synchronize_pkt.get_data().raw_data[2]);
-        }
+    }
+
+    #[test]
+    fn test_packet_crc32_empty_packet() {
+        let mut packet = Packet::new();
+
+        packet.calculate_checksum();
+
+        let checksum = packet.get_checksum();
+
+        println!("{}", checksum);
+
+        assert_eq!(checksum, 0xA2A7A9FD);
+    }
+
+    #[test]
+    fn test_packet_crc32() {
+        let username = String::from("LifeUser1");
+        let mut packet = Packet::new();
+        let packet_data = vec![100, 3, 122, 255];
+
+        packet.set_data(packet_data.clone());
+        packet.set_client_id(username);
+        packet.calculate_checksum();
+
+        let checksum = packet.get_checksum();
+
+        assert_eq!(checksum, 0x6F947FE0);
+    }
 }
