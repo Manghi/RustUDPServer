@@ -7,6 +7,7 @@ extern crate net2;
 extern crate env_logger;
 extern crate crc;
 
+pub mod debug;
 pub mod communicate;
 pub mod packet;
 pub mod utils;

@@ -71,19 +71,38 @@ impl fmt::Debug for Packet {
 
 impl fmt::Display for UDPHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Signature:{:?}\n  Sequence Number:{:?}", self.signature, self.sequence_number)
+        write!(f, "Signature: {:?}
+  Sequence_Number:\t{:?}
+  CRC32:\t{:?}
+  Client_ID:\t{:?}
+  Action_Type:\t{:?}
+  Ack_Num:\t{:?}
+  Ack_Bits:\t{:?}",
+         self.signature,
+         self.sequence_number,
+         self.crc32,
+         self.client_id,
+         self.action_type,
+         self.ack_num,
+         self.ack_bits)
     }
 }
 
 impl fmt::Display for UDPData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Raw Data:{:?}\n", 0)
+        //write!(f, "Raw Data:{:?}\n", "self.raw_data")
+        write!(f, "Raw Data: {:?}\n", "ENABLE_RAW_DATA_PRINT_FOR_DETAIL")
     }
 }
 
 impl fmt::Display for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\nPacket:\n  {:?}\n  {:?}\n", self.header, self.data)
+        if false {
+            write!(f, "\nPacket:\n  {:?}\n  {:?}\n", self.header, self.data)
+        }
+        else {
+            write!(f, "")
+        }
     }
 }
 

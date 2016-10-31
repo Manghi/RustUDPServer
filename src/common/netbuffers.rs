@@ -72,6 +72,7 @@
  */
 
 use packet::Packet;
+use debug::*;
 
 const MAX_PACKET_BUFFER_SIZE: usize = 32;
 
@@ -105,13 +106,14 @@ struct NetStatistics {
 impl NetworkBufferManager {
 
     fn new() -> NetworkBufferManager {
+        debug_println(DebugPrint::NETWORK, "NetworkBufferManager", "Initialized");
+
         NetworkBufferManager {
             sent_packet_buffer: vec![Packet::new(); MAX_PACKET_BUFFER_SIZE],
             tx_packets: vec![false; MAX_PACKET_BUFFER_SIZE],
             rx_acks: vec![false; MAX_PACKET_BUFFER_SIZE],
             high_priority_acks: vec![false; MAX_PACKET_BUFFER_SIZE],
             length : 0,
-
         }
     }
 
@@ -134,6 +136,10 @@ impl NetworkBufferManager {
                 self.tx_packets[ack_num] = true;
                 self.length += 1;
 
+                let packet_debug = packet.clone();
+                let message = format!("{} {}", "Inserted", packet_debug);
+                debug_println(DebugPrint::NETWORK, "NetworkBufferManager", message.as_str() );
+
                 return Result::Ok(NetworkBufferManagerProbe::Inserted)
             }
             else {
@@ -144,6 +150,12 @@ impl NetworkBufferManager {
 
     fn remove(&mut self, packet_index: usize) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
         if !self.is_empty() {
+
+            let packet_debug = self.sent_packet_buffer[packet_index].clone();
+            let message = format!("{} {}", "Removed", packet_debug);
+            debug_println(DebugPrint::NETWORK, "NetworkBufferManager", message.as_str() );
+
+
             self.tx_packets[packet_index] = false;
             self.length -= 1;
             self.sent_packet_buffer[packet_index] = Packet::new();
@@ -167,6 +179,11 @@ impl NetworkBufferManager {
         for i in 0..MAX_PACKET_BUFFER_SIZE {
             if self.rx_acks[i] ^ self.tx_packets[i] {
                 self.high_priority_acks[i] = true;
+
+                let packet_debug = self.sent_packet_buffer[i].clone();
+                let message = format!("{} {}", "Promoted", packet_debug);
+                debug_println(DebugPrint::NETWORK, "NetworkBufferManager", message.as_str() );
+
             }
         }
     }
@@ -331,9 +348,9 @@ mod test {
     fn test_network_buffer_promotion() {
         let mut udp_buffer: NetworkBufferManager = NetworkBufferManager::new();
 
-        let to_be_high_priority = vec![0, 10, 20, 21, 31];
+        let buffer_index_to_be_high_priority = vec![0, 10, 20, 21, 31];
 
-        for x in to_be_high_priority.clone() {
+        for x in buffer_index_to_be_high_priority.clone() {
             let index = x as u32;
             let mut temp_packet: Packet = Packet::new();
             let ack : u32 = index  % (MAX_PACKET_BUFFER_SIZE as u32);
@@ -350,7 +367,7 @@ mod test {
 
         udp_buffer.promote_packets();
 
-        for x in to_be_high_priority.clone() {
+        for x in buffer_index_to_be_high_priority.clone() {
             assert_eq!(udp_buffer.high_priority_acks[x], true);
         }
 
