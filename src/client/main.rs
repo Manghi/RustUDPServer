@@ -15,20 +15,21 @@ use std::{str};
 
 use common::communicate::*;
 use common::packet::{Packet, MyLen};
+use common::netbuffers::{NetworkBufferManager, NetworkBufferManagerProbe};
 
 fn print_help_menu() {
-    println!("
+println!("
 Usage:
-    help    - print this menu
-    send    - send a message to the server
-    exit    - quit the client
+help    - print this menu
+send    - send a message to the server
+exit    - quit the client
 
 Example:
-    > help
+> help
 
-    > send
+> send
 
-    > exit
+> exit
 
 ");
 }
@@ -57,7 +58,7 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
 }
 
 fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
-                   tx_exit_thread: &mioco::sync::mpsc::SyncSender<String>) {
+               tx_exit_thread: &mioco::sync::mpsc::SyncSender<String>) {
 
     // temp, wait for other threads to instantiate
     let one_sec = time::Duration::from_millis(1000);
@@ -104,7 +105,10 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
     }
 }
 
-fn start_transfer_socket(skt: &mio::udp::UdpSocket, rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<std::string::String>) {
+fn start_transfer_socket(skt: &mio::udp::UdpSocket,
+        rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<std::string::String>,
+        net_buffer_mgr: &NetworkBufferManager) {
+
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
 
     loop {
@@ -121,7 +125,7 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket, rx_from_socket_chnl: &mioco:
     }
 }
 
-fn listen_on_socket(listen_addr: &net::SocketAddrV4) {
+fn listen_on_socket(listen_addr: &net::SocketAddrV4, net_buffer_mgr: &NetworkBufferManager) {
     let skt = socket(net::SocketAddr::V4(*listen_addr));
     let mut buf = [0u8; 1024 * 16];
 
@@ -145,13 +149,12 @@ fn listen_on_socket(listen_addr: &net::SocketAddrV4) {
 }
 
 fn main() {
-
     match env_logger::init() {
         Ok(_) => {
             info!("Environment logger started...");
         }
         Err(_) => {
-            debug!("Shits fucked up yo.");
+            debug!("Could not start logger... Abort.");
             return;
         }
     }
@@ -168,31 +171,36 @@ fn main() {
         read_user_input(&tx_user_input, &tx_exit_thread);
     });
 
+    //TODO: Value moves @ 177 b/c does not implement Copy
+    /// But it is not so straight forward. Needs investigation
+    //let mut net_buffer_mgr : NetworkBufferManager = NetworkBufferManager::new();
+
     thread::spawn(move|| {
-        start_transfer_socket(&skt, &rx_from_socket_chnl);
+        start_transfer_socket(&skt, &rx_from_socket_chnl, &net_buffer_mgr);
     });
 
 
     thread::spawn(move|| {
-        listen_on_socket(&listen_addr);
+        listen_on_socket(&listen_addr, &net_buffer_mgr);
     });
 
     mioco::start(move || {
-                loop {
-                    select!(
-                        r:rx_user_input => {
-                            let _m = rx_user_input.recv();
-                            let _ = tx_to_socket.send(String::from("xfer"));
-                            //println!("1. Received ...");
-                            //println!("{:?}", message.unwrap());
-                        },
-                        r: rx_exit_thread => {
-                            let _m = rx_exit_thread.recv();
-                            println!("Gracefully exiting...");
-                            break;
-                        },
-                    );
-                }
+        loop {
+            select!(
+                r:rx_user_input => {
+                    let _m = rx_user_input.recv();
+                    let _ = tx_to_socket.send(String::from("xfer"));
+                    //println!("1. Received ...");
+                    //println!("{:?}", message.unwrap());
+                },
+                r: rx_exit_thread => {
+                    let _m = rx_exit_thread.recv();
+                    println!("Gracefully exiting...");
+                    break;
+                },
+            );
+        }
     }).unwrap(); // It's alright if this code panics.
+
     println!("Exiting client..");
 }

@@ -1,75 +1,75 @@
 /*
- * A NetworkBufferManager is used to keep track of what packets we have receieved thus far. It is not meant
- * to act as a buffer that is filled and then processed. Packets are processed immediately upon recepient.
- *
- * In this section I will use "sender" and "receiver" to indicate xfer between client and server.
- *
- * Normal case is that sender will send a stream of sequential packets. They will buffer each packet
- * only to discard when the receiver has confirmed the arrival of the packet. It will keep track of
- * which packets it has sent so far. This is used later on (see below). The receiver will then,
- * upon arrival of packet X, will flip the Xth ACK bit and process the packet. After processing,
- * they will reply to the sender with an ACK packet. This contains a bitmap of all ACKS receieved.
- *
- * When an ACK pkt is received by the Sender, XOR this value with its own knowledge of what it has sent.
- * The resulting set bits will determine which packets the sender sent by never were received by the
- * receiver. These now become candidate for high priority packets.
- *
- * Not all packets will be considered high priority. It depends on the message packet type and
- * its contents. You wouldn't want to resend a very stale, seconds-old packet.
- * So far, I'm thinking game initiation, completion, and collision attacks will need to be resent.
- * An option to maintain performance would be to interleve these resendable packets with the
- * standard stream. We can only have a window of 32 packets so there may be some throttling involved
- * when we do not wish to overwrite previous packets.
- *
- * Packets in groups of oldest 8 can be released after all have been received. The "elder" groups
- * must be released sequentially. They cannot jump around. The exception to this is if
- * there is a non-leading non-high priority missing packet, then we'll allow them to be released early.
- * After some time, these packets will become expired so as to prevent the sender from starvation.
- * Some of these metrics will be a tuneable parameter as it requires testing.
- *
- * Consider the following:
- *
- * Newest                       Oldest
- *      (4)      (3)      (2)      (1)
- * 0b01111111_11110111_10101111_11111111
- *                      H H
- *  Group 1 can be released early as all sent packets have been received.
- *  Group 3 cannot be released until group 2 has been released.
- *  Group 2 cannot release until its HP packets have been received by the receiver.
- *  Group 4 cannot be released because its leading packet has not been receieved. It may expire.
- *
- *
- * The ACK reply can be embedded in its own packets-to-send. A timer might be used to determine when
- * to send a periodic ACK if the receiver has no need for packets-to-send.
- *
- *
- * Sample flow:
- *          CLIENT                                                  SERVER
- *
- *          Send Packet_0                 ----->                Receive Packet_0
- *                                                              Process Packet_0
- *          Receive ACK (RAck=0b0001)     <-----                Send ACK
- *          XOR (RAck^Sent_Packets). No HP promotions.
- *          Send Packet_1                 ----->                N/A
- *          Send Packet_2                 ----->                N/A
- *          Send Packet_3                 ----->                Receive Packet_3
- *                                                              Process Packet_3
- *          Receive ACK (RAck=0b1001)     <-----                Send ACK
- *          XOR == (0b0110).
- *          Evaluate HP candiacy of Packet 1 & 2.
- *          HP = {Packet_1 and _2}
- *          Send Packet_1                 ----->                N/A
- *          Send Packet_2                 ----->                Receive Packet_2
- *                                                              Process Packet_2
- *          Receive ACK (RAck=0b1101)     <-----                Send ACK
- *          Evaluate HP candidacy. Packet 1 already HP.
- *          HP = {Packet_1}
- *          Send Packet_2                 ----->                Receive Packet_1
- *                                                              Process Packet_1
- *          Receive ACK (RAck=0b1111)     <-----                Send ACK
- *          All sent bits received.
- *          Process/Wait for more packets.
- */
+* A NetworkBufferManager is used to keep track of what packets we have receieved thus far. It is not meant
+* to act as a buffer that is filled and then processed. Packets are processed immediately upon recepient.
+*
+* In this section I will use "sender" and "receiver" to indicate xfer between client and server.
+*
+* Normal case is that sender will send a stream of sequential packets. They will buffer each packet
+* only to discard when the receiver has confirmed the arrival of the packet. It will keep track of
+* which packets it has sent so far. This is used later on (see below). The receiver will then,
+* upon arrival of packet X, will flip the Xth ACK bit and process the packet. After processing,
+* they will reply to the sender with an ACK packet. This contains a bitmap of all ACKS receieved.
+*
+* When an ACK pkt is received by the Sender, XOR this value with its own knowledge of what it has sent.
+* The resulting set bits will determine which packets the sender sent by never were received by the
+* receiver. These now become candidate for high priority packets.
+*
+* Not all packets will be considered high priority. It depends on the message packet type and
+* its contents. You wouldn't want to resend a very stale, seconds-old packet.
+* So far, I'm thinking game initiation, completion, and collision attacks will need to be resent.
+* An option to maintain performance would be to interleve these resendable packets with the
+* standard stream. We can only have a window of 32 packets so there may be some throttling involved
+* when we do not wish to overwrite previous packets.
+*
+* Packets in groups of oldest 8 can be released after all have been received. The "elder" groups
+* must be released sequentially. They cannot jump around. The exception to this is if
+* there is a non-leading non-high priority missing packet, then we'll allow them to be released early.
+* After some time, these packets will become expired so as to prevent the sender from starvation.
+* Some of these metrics will be a tuneable parameter as it requires testing.
+*
+* Consider the following:
+*
+* Newest                       Oldest
+*      (4)      (3)      (2)      (1)
+* 0b01111111_11110111_10101111_11111111
+*                      H H
+*  Group 1 can be released early as all sent packets have been received.
+*  Group 3 cannot be released until group 2 has been released.
+*  Group 2 cannot release until its HP packets have been received by the receiver.
+*  Group 4 cannot be released because its leading packet has not been receieved. It may expire.
+*
+*
+* The ACK reply can be embedded in its own packets-to-send. A timer might be used to determine when
+* to send a periodic ACK if the receiver has no need for packets-to-send.
+*
+*
+* Sample flow:
+*          CLIENT                                                  SERVER
+*
+*          Send Packet_0                 ----->                Receive Packet_0
+*                                                              Process Packet_0
+*          Receive ACK (RAck=0b0001)     <-----                Send ACK
+*          XOR (RAck^Sent_Packets). No HP promotions.
+*          Send Packet_1                 ----->                N/A
+*          Send Packet_2                 ----->                N/A
+*          Send Packet_3                 ----->                Receive Packet_3
+*                                                              Process Packet_3
+*          Receive ACK (RAck=0b1001)     <-----                Send ACK
+*          XOR == (0b0110).
+*          Evaluate HP candiacy of Packet 1 & 2.
+*          HP = {Packet_1 and _2}
+*          Send Packet_1                 ----->                N/A
+*          Send Packet_2                 ----->                Receive Packet_2
+*                                                              Process Packet_2
+*          Receive ACK (RAck=0b1101)     <-----                Send ACK
+*          Evaluate HP candidacy. Packet 1 already HP.
+*          HP = {Packet_1}
+*          Send Packet_2                 ----->                Receive Packet_1
+*                                                              Process Packet_1
+*          Receive ACK (RAck=0b1111)     <-----                Send ACK
+*          All sent bits received.
+*          Process/Wait for more packets.
+*/
 
 use packet::Packet;
 use debug::*;
@@ -77,7 +77,7 @@ use debug::*;
 const MAX_PACKET_BUFFER_SIZE: usize = 32;
 
 #[derive(PartialEq)]
-enum NetworkBufferManagerProbe {
+pub enum NetworkBufferManagerProbe {
     Inserted,
     Removed,
     Exists,
@@ -85,27 +85,32 @@ enum NetworkBufferManagerProbe {
     Empty,
 }
 
-struct NetworkBufferManager {
-        sent_packet_buffer: Vec<Packet>,
-        tx_packets: Vec<bool>,
+pub struct NetworkBufferManager {
+    sent_packet_buffer: Vec<Packet>,
+    tx_packets: Vec<bool>,
 
-        rx_acks: Vec<bool>,
-        high_priority_acks: Vec<bool>,
+    rx_acks: Vec<bool>,
+    high_priority_acks: Vec<bool>,
 
-        length: usize,
+    length: usize,
 }
 
 /*
 struct NetStatistics {
-    packets_sent: u64,
-    packets_recv: u64,
-    packets_dropped: u64,
+packets_sent: u64,
+packets_recv: u64,
+packets_dropped: u64,
 }
 */
+// 
+// impl Copy for NetworkBufferManager { }
+// impl Clone for NetworkBufferManager {
+//     fn clone(&self) -> NetworkBufferManager { *self }
+// }
 
 impl NetworkBufferManager {
 
-    fn new() -> NetworkBufferManager {
+    pub fn new() -> NetworkBufferManager {
         debug_println(DebugPrint::NETWORK, "NetworkBufferManager", "Initialized");
 
         NetworkBufferManager {
@@ -117,11 +122,11 @@ impl NetworkBufferManager {
         }
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.length
     }
 
-    fn insert(&mut self, packet: &Packet) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
+    pub fn insert(&mut self, packet: &Packet) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
         if self.is_full() {
             return Result::Err(NetworkBufferManagerProbe::Full)
         }
@@ -148,7 +153,7 @@ impl NetworkBufferManager {
         }
     }
 
-    fn remove(&mut self, packet_index: usize) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
+    pub fn remove(&mut self, packet_index: usize) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
         if !self.is_empty() {
 
             let packet_debug = self.sent_packet_buffer[packet_index].clone();
@@ -166,15 +171,15 @@ impl NetworkBufferManager {
         }
     }
 
-    fn is_full(&self) -> bool {
+    pub fn is_full(&self) -> bool {
         (self.len() >= MAX_PACKET_BUFFER_SIZE)
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         (self.len() == 0)
     }
 
-    fn promote_packets(&mut self) {
+    pub fn promote_packets(&mut self) {
         // *          XOR (rx_acks^tx_acks). No HP promotions.
         for i in 0..MAX_PACKET_BUFFER_SIZE {
             if self.rx_acks[i] ^ self.tx_packets[i] {
@@ -190,9 +195,9 @@ impl NetworkBufferManager {
 }
 
 
-// --------------------------
+// ---------------------------------
 // |   NetworkBufferManager Tests  |
-// --------------------------
+// ---------------------------------
 
 #[cfg(test)]
 mod test {
@@ -368,8 +373,7 @@ mod test {
         udp_buffer.promote_packets();
 
         for x in buffer_index_to_be_high_priority.clone() {
-            assert_eq!(udp_buffer.high_priority_acks[x], true);
-        }
+        assert_eq!(udp_buffer.high_priority_acks[x], true); }
 
         for x in 1..10 {
             assert_eq!(udp_buffer.high_priority_acks[x], false);

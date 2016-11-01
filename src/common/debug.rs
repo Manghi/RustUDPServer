@@ -22,11 +22,11 @@ impl fmt::Display for DebugPrint {
 }
 
 #[allow(dead_code)]
-const debug_print_enabled : bool = false;
+const DEBUG_PRINT_ENABLED : bool = false;
 
 pub fn debug_println(debug_type: DebugPrint, module: &str, message: &str) {
 
-    if debug_print_enabled {
+    if DEBUG_PRINT_ENABLED {
         let debug_string = format!("[{:?}] {}: {}", debug_type, module, message);
 
         let debug_str = debug_string.as_str();
