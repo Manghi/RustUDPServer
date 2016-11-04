@@ -15,7 +15,7 @@ use std::{str};
 
 use common::communicate::*;
 use common::packet::{Packet, MyLen};
-use common::netbuffers::{NetworkBufferManager, NetworkBufferManagerProbe};
+use common::netbuffers::{ getNetworkBufferManager};
 
 fn print_help_menu() {
 println!("
@@ -86,28 +86,43 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
 
         match command[0].as_ref() {
             ""      => {},
+            "insert" => {
+                println!("Inserting...");
+                let _  = tx_user_input.send(String::from("insert"));
+            },
+            "remove" => {
+                println!("Removing...");
+                let _  = tx_user_input.send(String::from("remove"));
+            },
+            "query" => {
+                match getNetworkBufferManager().lock() {
+                    Ok(buffer) => {
+                        println!("{:?}", *buffer);
+                    },
+                    Err(error) => println!("Unable to acquire lock: {}", error),
+                }
+            },
             "help"  => {
-                        println!("Help menu...");
-                        print_help_menu();
-                    },
+                println!("Help menu...");
+                print_help_menu();
+            },
             "send"  => {
-                        println!("Sending to server");
-                        let _ = tx_user_input.send(String::new());
-                    },
+                println!("Sending to server");
+                let _ = tx_user_input.send(String::from("xfer"));
+            },
             "exit" => {
-                        let _ = tx_exit_thread.send(String::new());
-                    },
+                let _ = tx_exit_thread.send(String::new());
+            },
             _      => {
-                        println!("Command not recognized...");
-                    },
+                println!("Command not recognized...");
+            },
         }
 
     }
 }
 
 fn start_transfer_socket(skt: &mio::udp::UdpSocket,
-        rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<std::string::String>,
-        net_buffer_mgr: &NetworkBufferManager) {
+        rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<std::string::String>) {
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
 
@@ -119,13 +134,37 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                 if message == "xfer" {
                     send_to_localhost_port(&skt, &ip, get_port_server());
                 }
+                else if message == "insert" {
+                    println!("Insert:O");
+                    match getNetworkBufferManager().lock() {
+                        Ok(mut buffer) => {
+                            let mut pkt = Packet::new();
+                            pkt.set_sequence_number(5);
+                            pkt.set_client_id(String::from("Mang"));
+                            buffer.insert(pkt);
+                        },
+                        Err(error) => {println!("This is poison: {:?}", error);},
+                    }
+                }
+                else if message == "remove" {
+                    match getNetworkBufferManager().lock() {
+                        Ok(mut buffer) => {
+                            let pktnum = buffer.remove(5);
+                            match pktnum {
+                                Ok(pkt) => println!("Removed: {:?}", pkt),
+                                Err(err) => println!("No packet to remove... {:?}", err),
+                            }
+                        },
+                        Err(error) => {println!("This is poison: {:?}", error);},
+                    }
+                }
             },
             Err(_) => {}
         }
     }
 }
 
-fn listen_on_socket(listen_addr: &net::SocketAddrV4, net_buffer_mgr: &NetworkBufferManager) {
+fn listen_on_socket(listen_addr: &net::SocketAddrV4) {
     let skt = socket(net::SocketAddr::V4(*listen_addr));
     let mut buf = [0u8; 1024 * 16];
 
@@ -171,27 +210,33 @@ fn main() {
         read_user_input(&tx_user_input, &tx_exit_thread);
     });
 
-    //TODO: Value moves @ 177 b/c does not implement Copy
-    /// But it is not so straight forward. Needs investigation
-    //let mut net_buffer_mgr : NetworkBufferManager = NetworkBufferManager::new();
-
     thread::spawn(move|| {
-        start_transfer_socket(&skt, &rx_from_socket_chnl, &net_buffer_mgr);
+        start_transfer_socket(&skt, &rx_from_socket_chnl);
     });
 
 
     thread::spawn(move|| {
-        listen_on_socket(&listen_addr, &net_buffer_mgr);
+        listen_on_socket(&listen_addr);
     });
 
     mioco::start(move || {
         loop {
             select!(
                 r:rx_user_input => {
-                    let _m = rx_user_input.recv();
-                    let _ = tx_to_socket.send(String::from("xfer"));
-                    //println!("1. Received ...");
-                    //println!("{:?}", message.unwrap());
+                    match rx_user_input.recv(){
+                        Ok(message) => {
+                            if message  == String::from("xfer") {
+                                let _ = tx_to_socket.send(message);
+                            }
+                            else if message == String::from("insert") {
+                                let _ = tx_to_socket.send(message);
+                            }
+                            else if message == String::from("remove") {
+                                let _ = tx_to_socket.send(message);
+                            }
+                        },
+                        Err(error) => println!("Error encountered! {}", error)
+                    }
                 },
                 r: rx_exit_thread => {
                     let _m = rx_exit_thread.recv();

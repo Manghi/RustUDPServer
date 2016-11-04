@@ -73,10 +73,13 @@
 
 use packet::Packet;
 use debug::*;
+use lazy_static;
+use std::sync::Mutex;
+use std::fmt;
 
 const MAX_PACKET_BUFFER_SIZE: usize = 32;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum NetworkBufferManagerProbe {
     Inserted,
     Removed,
@@ -102,11 +105,18 @@ packets_recv: u64,
 packets_dropped: u64,
 }
 */
-// 
-// impl Copy for NetworkBufferManager { }
-// impl Clone for NetworkBufferManager {
-//     fn clone(&self) -> NetworkBufferManager { *self }
-// }
+
+impl fmt::Debug for NetworkBufferManager {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // replace with an iterator
+        let mut i = 0;
+        for ref x in &self.sent_packet_buffer {
+            write!(f, "{}, {:?}", i, x);
+            i+=1;
+        }
+        write!(f, "Length: {}", self.length)
+    }
+}
 
 impl NetworkBufferManager {
 
@@ -126,7 +136,7 @@ impl NetworkBufferManager {
         self.length
     }
 
-    pub fn insert(&mut self, packet: &Packet) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
+    pub fn insert(&mut self, packet: Packet) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
         if self.is_full() {
             return Result::Err(NetworkBufferManagerProbe::Full)
         }
@@ -134,8 +144,10 @@ impl NetworkBufferManager {
             let ack_indx = packet.get_sequence_num() % 32;
             let ack_num = ack_indx as usize;
 
+            println!("{}", ack_num);
+
             // If we've already received a packet with this ack# ignore it
-            if !self.rx_acks[ack_num] {
+            if !self.rx_acks[ack_num] || !self.tx_packets[ack_num] {
 
                 self.sent_packet_buffer[ack_num] = packet.clone();
                 self.tx_packets[ack_num] = true;
@@ -194,6 +206,13 @@ impl NetworkBufferManager {
     }
 }
 
+lazy_static! {
+    pub static ref UDP_BUFFER: Mutex<NetworkBufferManager> = Mutex::new(NetworkBufferManager::new());
+}
+
+pub fn getNetworkBufferManager() -> &'static UDP_BUFFER {
+    &UDP_BUFFER
+}
 
 // ---------------------------------
 // |   NetworkBufferManager Tests  |
@@ -228,7 +247,7 @@ mod test {
         temp_packet.set_client_id(user_name.clone());
         temp_packet.set_ackbit(3); // assume we have already received ack for pkt 3
 
-        match udp_buffer.insert(&temp_packet) {
+        match udp_buffer.insert(temp_packet) {
             Ok(n) => {
 
                 if n == NetworkBufferManagerProbe::Inserted {
@@ -270,7 +289,7 @@ mod test {
 
             let index: usize = (seq_num as usize) % 32;
 
-            match udp_buffer.insert(&temp_packet) {
+            match udp_buffer.insert(temp_packet) {
 
                 Ok(n) => {
 
@@ -330,7 +349,7 @@ mod test {
             temp_packet.set_sequence_number(index);
             temp_packet.set_ack(ack);
 
-            udp_buffer.insert(&temp_packet);
+            udp_buffer.insert(temp_packet);
         }
 
         let mut counter : u8 = 0;
@@ -363,7 +382,7 @@ mod test {
             temp_packet.set_sequence_number(index);
             temp_packet.set_ack(ack);
 
-            udp_buffer.insert(&temp_packet);
+            udp_buffer.insert(temp_packet);
         }
 
         // We have sent packets `to_be_high_priority` but no ack bits are set
