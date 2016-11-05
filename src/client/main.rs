@@ -110,7 +110,7 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
                 println!("Sending to server");
                 let _ = tx_user_input.send(String::from("xfer"));
             },
-            "exit" => {
+            "exit" | "q" => {
                 let _ = tx_exit_thread.send(String::new());
             },
             _      => {
@@ -135,13 +135,14 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                     send_to_localhost_port(&skt, &ip, get_port_server());
                 }
                 else if message == "insert" {
-                    println!("Insert:O");
+                    //println!("Inserting...");
                     match getNetworkBufferManager().lock() {
                         Ok(mut buffer) => {
                             let mut pkt = Packet::new();
                             pkt.set_sequence_number(5);
                             pkt.set_client_id(String::from("Mang"));
-                            buffer.insert(pkt);
+                            let result = buffer.insert(pkt);
+                            println!("{:?}", result);
                         },
                         Err(error) => {println!("This is poison: {:?}", error);},
                     }
@@ -149,8 +150,8 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                 else if message == "remove" {
                     match getNetworkBufferManager().lock() {
                         Ok(mut buffer) => {
-                            let pktnum = buffer.remove(5);
-                            match pktnum {
+                            let result = buffer.remove(5);
+                            match result {
                                 Ok(pkt) => println!("Removed: {:?}", pkt),
                                 Err(err) => println!("No packet to remove... {:?}", err),
                             }
@@ -159,7 +160,7 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                     }
                 }
             },
-            Err(_) => {}
+            Err(_) => {},
         }
     }
 }

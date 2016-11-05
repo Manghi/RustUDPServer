@@ -111,10 +111,11 @@ impl fmt::Debug for NetworkBufferManager {
         // replace with an iterator
         let mut i = 0;
         for ref x in &self.sent_packet_buffer {
-            write!(f, "{}, {:?}", i, x);
+            write!(f, "{}", i);
+            println!("{:?}", x);
             i+=1;
         }
-        write!(f, "Length: {}", self.length)
+        write!(f, "\nLength: {}", self.length)
     }
 }
 
@@ -144,17 +145,18 @@ impl NetworkBufferManager {
             let ack_indx = packet.get_sequence_num() % 32;
             let ack_num = ack_indx as usize;
 
-            println!("{}", ack_num);
+            let rx = self.rx_acks[ack_num];
+            let tx = self.tx_packets[ack_num];
 
             // If we've already received a packet with this ack# ignore it
-            if !self.rx_acks[ack_num] || !self.tx_packets[ack_num] {
+            if !(tx) && !(rx) {
 
                 self.sent_packet_buffer[ack_num] = packet.clone();
                 self.tx_packets[ack_num] = true;
                 self.length += 1;
 
                 let packet_debug = packet.clone();
-                let message = format!("{} {}", "Inserted", packet_debug);
+                let message = format!("{} {:?} @ {}", "Inserted", packet_debug, ack_num);
                 debug_println(DebugPrint::NETWORK, "NetworkBufferManager", message.as_str() );
 
                 return Result::Ok(NetworkBufferManagerProbe::Inserted)
