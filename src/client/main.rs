@@ -15,13 +15,13 @@ use std::{str};
 
 use common::communicate::*;
 use common::packet::{Packet, MyLen};
-use common::netbuffers::{ getNetworkBufferManager};
+use common::netbuffers::{ get_network_buffer_manager};
 
 #[derive(PartialEq)]
 enum MessageType {
     INSERT,
     REMOVE,
-    QUERY,
+    // QUERY, // Actuall don't need this
     SEND,
     EXIT
 }
@@ -42,7 +42,7 @@ help        - print this menu
 insert #    - Inserts packet with sequence num '#' into the network buffer
 remove #    - Removes index '#' of the network buffer
 query [#]   - Inspects index (if present), otherwise inspects entire buffer
-query;list  - Prints what indexes in the buffer have packets
+query.list  - Prints what indexes in the buffer have packets
 send        - send a message to the server
 exit        - quit the client
 
@@ -132,10 +132,7 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
 
         let line = line.parse::<String>().expect("Not a number");
 
-        //command[0].replace("\n","");
-
         let (arg_count, command, arg1) = parse_user_command(&line);
-
 
         match command.as_ref() {
             ""      => {},
@@ -160,7 +157,7 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
                 }
             },
             "query" => {
-                match getNetworkBufferManager().lock() {
+                match get_network_buffer_manager().lock() {
                     Ok(buffer) => {
                         if command.len() > 1 {
                             println!("{:?}", buffer.peek(arg1));
@@ -169,25 +166,15 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
                             println!("{:?}", *buffer);
                         }
                     },
-                    Err(error) => println!("Unable to acquire lock: {}", error),
+                    Err(error) => println!("Error: Unable to acquire lock: {}", error),
                 }
             },
-            "query;list" => {
-                match getNetworkBufferManager().lock() {
+            "query.list" => {
+                match get_network_buffer_manager().lock() {
                     Ok(buffer) => {
-
-                        let tx_packets = buffer.get_tx_packets();
-
-                        let mut i = 0;
-                        for x in tx_packets {
-                            if *x == true {
-                                println!("{}: {}", i, x);
-                            }
-                            i += 1;
-                        }
-
+                        buffer.query_list();
                     },
-                    Err(error) => println!("Unable to acquire lock: {}", error),
+                    Err(error) => println!("Error: Unable to acquire lock: {}", error),
                 }
             },
             "help"  => {
@@ -224,8 +211,7 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                     send_to_localhost_port(&skt, &ip, get_port_server());
                 }
                 else if message.action == MessageType::INSERT {
-                    //println!("Inserting...");
-                    match getNetworkBufferManager().lock() {
+                    match get_network_buffer_manager().lock() {
                         Ok(mut buffer) => {
                             let mut pkt = Packet::new();
                             pkt.set_sequence_number(message.param1 as u32);
@@ -237,7 +223,7 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                     }
                 }
                 else if message.action == MessageType::REMOVE {
-                    match getNetworkBufferManager().lock() {
+                    match get_network_buffer_manager().lock() {
                         Ok(mut buffer) => {
                             let result = buffer.remove(message.param1);
                             match result {
@@ -293,7 +279,7 @@ fn main() {
     let (tx_exit_thread, rx_exit_thread) = mioco::sync::mpsc::sync_channel::<MessageType>(5);
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
-    let listen_addr = net::SocketAddrV4::new(ip, 8888);//get_port_client());
+    let listen_addr = net::SocketAddrV4::new(ip, get_port_client());
     let skt = socket(net::SocketAddr::V4(listen_addr));
 
     thread::spawn(move|| {
@@ -315,13 +301,9 @@ fn main() {
                 r:rx_user_input => {
                     match rx_user_input.recv(){
                         Ok(message) => {
-                            if message.action  == MessageType::SEND {
-                                let _ = tx_to_socket.send(message);
-                            }
-                            else if message.action == MessageType::INSERT {
-                                let _ = tx_to_socket.send(message);
-                            }
-                            else if message.action == MessageType::REMOVE {
+                            if  message.action == MessageType::SEND
+                             || message.action == MessageType::INSERT
+                             || message.action == MessageType::REMOVE {
                                 let _ = tx_to_socket.send(message);
                             }
                         },

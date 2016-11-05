@@ -3,7 +3,7 @@
 
 use std::*;
 use utils::*;
-use crc::{crc32, Hasher32};
+use crc::{crc32};
 use debug::{is_debug_print_enabled};
 
 /*
