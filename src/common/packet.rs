@@ -4,6 +4,7 @@
 use std::*;
 use utils::*;
 use crc::{crc32, Hasher32};
+use debug::{is_debug_print_enabled};
 
 /*
 enum Actor {
@@ -97,11 +98,12 @@ impl fmt::Display for UDPData {
 
 impl fmt::Display for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if false {
+        let debug_print = is_debug_print_enabled();
+        if debug_print {
             write!(f, "\nPacket:\n  {:?}\n  {:?}\n", self.header, self.data)
         }
         else {
-            write!(f, "")
+            write!(f, "Packet Debug Disabled...")
         }
     }
 }

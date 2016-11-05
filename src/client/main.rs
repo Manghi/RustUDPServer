@@ -17,18 +17,32 @@ use common::communicate::*;
 use common::packet::{Packet, MyLen};
 use common::netbuffers::{ getNetworkBufferManager};
 
+#[allow(dead_code)]
+struct ThreadMessage {
+    string : String,
+    param1 : usize,
+    param2 : usize,
+    param3 : usize
+}
+
+
 fn print_help_menu() {
 println!("
 Usage:
-help    - print this menu
-send    - send a message to the server
-exit    - quit the client
+help        - print this menu
+insert #    - Inserts packet with sequence num '#' into the network buffer
+remove #    - Removes index '#' of the network buffer
+query [#]   - Inspects index (if present), otherwise inspects entire buffer
+send        - send a message to the server
+exit        - quit the client
 
 Example:
 > help
-
 > send
-
+> insert 3
+> query 3
+> remove 3
+> query
 > exit
 
 ");
@@ -57,7 +71,7 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
     }
 }
 
-fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
+fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
                tx_exit_thread: &mioco::sync::mpsc::SyncSender<String>) {
 
     // temp, wait for other threads to instantiate
@@ -75,11 +89,24 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
 
         let line = line.parse::<String>().expect("Not a number");
 
-        let mut command : Vec<&str> = line.trim().split(';').collect();
+        let mut command : Vec<&str> = line.trim().split(' ').collect();
         //command[0].replace("\n","");
 
         for i in 0..command.len() {
             command[i] = command[i].trim();
+        }
+
+        let mut arg1 : usize = 0;
+        if command.len() > 1 {
+            match command[1].parse::<i32>() {
+                Ok(number) => {
+                    arg1 = number as usize;
+                },
+                Err(error) => {
+                    println!("Probably not a number... For now ignore it: {}", error);
+                    command.remove(1);
+                },
+            }
         }
 
         debug!("Command: {:?}", command);
@@ -87,17 +114,47 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
         match command[0].as_ref() {
             ""      => {},
             "insert" => {
-                println!("Inserting...");
-                let _  = tx_user_input.send(String::from("insert"));
+                if command.len() > 1 {
+                    println!("Inserting...");
+                    let container = ThreadMessage {
+                        string: String::from("insert"),
+                        param1: arg1,
+                        param2: 0,
+                        param3: 0,
+                    };
+                    let _  = tx_user_input.send(container);
+                }
+                else {
+                    println!("Not enough arguments...");
+                }
             },
             "remove" => {
-                println!("Removing...");
-                let _  = tx_user_input.send(String::from("remove"));
+
+                if command.len() > 1 {
+                    println!("Removing...");
+
+                    let container = ThreadMessage {
+                        string: String::from("remove"),
+                        param1: arg1,
+                        param2: 0,
+                        param3: 0,
+                    };
+
+                    let _  = tx_user_input.send(container);
+                }
+                else {
+                    println!("Not enough arguments...");
+                }
             },
             "query" => {
                 match getNetworkBufferManager().lock() {
                     Ok(buffer) => {
-                        println!("{:?}", *buffer);
+                        if command.len() > 1 {
+                            println!("{:?}", buffer.peek(arg1));
+                        }
+                        else {
+                            println!("{:?}", *buffer);
+                        }
                     },
                     Err(error) => println!("Unable to acquire lock: {}", error),
                 }
@@ -108,8 +165,14 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
             },
             "send"  => {
                 println!("Sending to server");
-                let _ = tx_user_input.send(String::from("xfer"));
-            },
+                let container = ThreadMessage {
+                    string: String::from("xfer"),
+                    param1: arg1,
+                    param2: 0,
+                    param3: 0,
+                };
+
+                let _  = tx_user_input.send(container);            },
             "exit" | "q" => {
                 let _ = tx_exit_thread.send(String::new());
             },
@@ -122,7 +185,7 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<String>,
 }
 
 fn start_transfer_socket(skt: &mio::udp::UdpSocket,
-        rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<std::string::String>) {
+        rx_from_socket_chnl: &mioco::sync::mpsc::Receiver<ThreadMessage>) {
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
 
@@ -131,15 +194,15 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
 
         match _m {
             Ok(message) => {
-                if message == "xfer" {
+                if message.string == "xfer" {
                     send_to_localhost_port(&skt, &ip, get_port_server());
                 }
-                else if message == "insert" {
+                else if message.string == "insert" {
                     //println!("Inserting...");
                     match getNetworkBufferManager().lock() {
                         Ok(mut buffer) => {
                             let mut pkt = Packet::new();
-                            pkt.set_sequence_number(5);
+                            pkt.set_sequence_number(message.param1 as u32);
                             pkt.set_client_id(String::from("Mang"));
                             let result = buffer.insert(pkt);
                             println!("{:?}", result);
@@ -147,10 +210,10 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                         Err(error) => {println!("This is poison: {:?}", error);},
                     }
                 }
-                else if message == "remove" {
+                else if message.string == "remove" {
                     match getNetworkBufferManager().lock() {
                         Ok(mut buffer) => {
-                            let result = buffer.remove(5);
+                            let result = buffer.remove(message.param1);
                             match result {
                                 Ok(pkt) => println!("Removed: {:?}", pkt),
                                 Err(err) => println!("No packet to remove... {:?}", err),
@@ -199,8 +262,8 @@ fn main() {
         }
     }
 
-    let (tx_user_input, rx_user_input) = mioco::sync::mpsc::sync_channel::<String>(5);
-    let (tx_to_socket, rx_from_socket_chnl) = mioco::sync::mpsc::sync_channel::<String>(5);
+    let (tx_user_input, rx_user_input) = mioco::sync::mpsc::sync_channel::<ThreadMessage>(5);
+    let (tx_to_socket, rx_from_socket_chnl) = mioco::sync::mpsc::sync_channel::<ThreadMessage>(5);
     let (tx_exit_thread, rx_exit_thread) = mioco::sync::mpsc::sync_channel::<String>(5);
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
@@ -226,13 +289,13 @@ fn main() {
                 r:rx_user_input => {
                     match rx_user_input.recv(){
                         Ok(message) => {
-                            if message  == String::from("xfer") {
+                            if message.string  == String::from("xfer") {
                                 let _ = tx_to_socket.send(message);
                             }
-                            else if message == String::from("insert") {
+                            else if message.string == String::from("insert") {
                                 let _ = tx_to_socket.send(message);
                             }
-                            else if message == String::from("remove") {
+                            else if message.string == String::from("remove") {
                                 let _ = tx_to_socket.send(message);
                             }
                         },

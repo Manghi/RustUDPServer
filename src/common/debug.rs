@@ -24,6 +24,10 @@ impl fmt::Display for DebugPrint {
 #[allow(dead_code)]
 const DEBUG_PRINT_ENABLED : bool = true;
 
+pub fn is_debug_print_enabled() -> bool {
+    DEBUG_PRINT_ENABLED
+}
+
 pub fn debug_println(debug_type: DebugPrint, module: &str, message: &str) {
 
     if DEBUG_PRINT_ENABLED {

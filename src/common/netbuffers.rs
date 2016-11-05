@@ -109,11 +109,9 @@ packets_dropped: u64,
 impl fmt::Debug for NetworkBufferManager {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // replace with an iterator
-        let mut i = 0;
-        for ref x in &self.sent_packet_buffer {
+        for i in 0..MAX_PACKET_BUFFER_SIZE {
             write!(f, "{}", i);
-            println!("{:?}", x);
-            i+=1;
+            write!(f, "{:?}\n", self.sent_packet_buffer[i]);
         }
         write!(f, "\nLength: {}", self.length)
     }
@@ -168,7 +166,7 @@ impl NetworkBufferManager {
     }
 
     pub fn remove(&mut self, packet_index: usize) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
-        if !self.is_empty() {
+        if !self.is_empty() && self.tx_packets[packet_index] {
 
             let packet_debug = self.sent_packet_buffer[packet_index].clone();
             let message = format!("{} {}", "Removed", packet_debug);
@@ -204,6 +202,15 @@ impl NetworkBufferManager {
                 debug_println(DebugPrint::NETWORK, "NetworkBufferManager", message.as_str() );
 
             }
+        }
+    }
+
+    pub fn peek(&self, index : usize) -> Result<Packet, String> {
+        if index < MAX_PACKET_BUFFER_SIZE {
+            Result::Ok(self.sent_packet_buffer[index].clone())
+        }
+        else {
+            Result::Err(String::from("Index out of bounds"))
         }
     }
 }
