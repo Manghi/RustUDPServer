@@ -166,7 +166,7 @@ impl NetworkBufferManager {
     }
 
     pub fn remove(&mut self, packet_index: usize) -> Result<NetworkBufferManagerProbe, NetworkBufferManagerProbe> {
-        if !self.is_empty() && self.tx_packets[packet_index] {
+        if packet_index < MAX_PACKET_BUFFER_SIZE && !self.is_empty() && self.tx_packets[packet_index] {
 
             let packet_debug = self.sent_packet_buffer[packet_index].clone();
             let message = format!("{} {}", "Removed", packet_debug);
@@ -212,6 +212,10 @@ impl NetworkBufferManager {
         else {
             Result::Err(String::from("Index out of bounds"))
         }
+    }
+
+    pub fn get_tx_packets(&self) -> &Vec<bool> {
+        self.tx_packets.as_ref()
     }
 }
 

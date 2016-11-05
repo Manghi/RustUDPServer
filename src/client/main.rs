@@ -17,9 +17,18 @@ use common::communicate::*;
 use common::packet::{Packet, MyLen};
 use common::netbuffers::{ getNetworkBufferManager};
 
+#[derive(PartialEq)]
+enum MessageType {
+    INSERT,
+    REMOVE,
+    QUERY,
+    SEND,
+    EXIT
+}
+
 #[allow(dead_code)]
 struct ThreadMessage {
-    string : String,
+    action : MessageType,
     param1 : usize,
     param2 : usize,
     param3 : usize
@@ -33,6 +42,7 @@ help        - print this menu
 insert #    - Inserts packet with sequence num '#' into the network buffer
 remove #    - Removes index '#' of the network buffer
 query [#]   - Inspects index (if present), otherwise inspects entire buffer
+query;list  - Prints what indexes in the buffer have packets
 send        - send a message to the server
 exit        - quit the client
 
@@ -46,6 +56,39 @@ Example:
 > exit
 
 ");
+}
+
+fn build_message(m_type: MessageType, param1: usize, param2: usize, param3: usize) -> ThreadMessage {
+    ThreadMessage {
+        action: m_type,
+        param1: param1,
+        param2: param2,
+        param3: param3,
+    }
+}
+
+fn parse_user_command(input_command: &String) -> (usize, &str, usize) {
+    let mut command : Vec<&str> = input_command.trim().split(' ').collect();
+
+    for i in 0..command.len() {
+        command[i] = command[i].trim();
+    }
+
+    let mut arg1 : usize = 0;
+    if command.len() > 1 {
+        match command[1].parse::<u32>() {
+            Ok(number) => {
+                arg1 = number as usize;
+            },
+            Err(error) => {
+                println!("Probably not a number... For now ignore it: {}", error);
+                command.remove(1);
+            },
+        }
+    }
+
+    debug!("Command: {:?}", command);
+    (command.len(), command[0], arg1)
 }
 
 fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u16) {
@@ -72,7 +115,7 @@ fn send_to_localhost_port(skt: &mio::udp::UdpSocket, ip: &net::Ipv4Addr, port: u
 }
 
 fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
-               tx_exit_thread: &mioco::sync::mpsc::SyncSender<String>) {
+               tx_exit_thread: &mioco::sync::mpsc::SyncSender<MessageType>) {
 
     // temp, wait for other threads to instantiate
     let one_sec = time::Duration::from_millis(1000);
@@ -89,39 +132,17 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
 
         let line = line.parse::<String>().expect("Not a number");
 
-        let mut command : Vec<&str> = line.trim().split(' ').collect();
         //command[0].replace("\n","");
 
-        for i in 0..command.len() {
-            command[i] = command[i].trim();
-        }
+        let (arg_count, command, arg1) = parse_user_command(&line);
 
-        let mut arg1 : usize = 0;
-        if command.len() > 1 {
-            match command[1].parse::<i32>() {
-                Ok(number) => {
-                    arg1 = number as usize;
-                },
-                Err(error) => {
-                    println!("Probably not a number... For now ignore it: {}", error);
-                    command.remove(1);
-                },
-            }
-        }
 
-        debug!("Command: {:?}", command);
-
-        match command[0].as_ref() {
+        match command.as_ref() {
             ""      => {},
             "insert" => {
-                if command.len() > 1 {
+                if arg_count > 1 {
                     println!("Inserting...");
-                    let container = ThreadMessage {
-                        string: String::from("insert"),
-                        param1: arg1,
-                        param2: 0,
-                        param3: 0,
-                    };
+                    let container = build_message(MessageType::INSERT, arg1, 0, 0);
                     let _  = tx_user_input.send(container);
                 }
                 else {
@@ -129,17 +150,9 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
                 }
             },
             "remove" => {
-
-                if command.len() > 1 {
+                if arg_count > 1 {
                     println!("Removing...");
-
-                    let container = ThreadMessage {
-                        string: String::from("remove"),
-                        param1: arg1,
-                        param2: 0,
-                        param3: 0,
-                    };
-
+                    let container = build_message(MessageType::REMOVE, arg1, 0, 0);
                     let _  = tx_user_input.send(container);
                 }
                 else {
@@ -159,22 +172,35 @@ fn read_user_input(tx_user_input: &mioco::sync::mpsc::SyncSender<ThreadMessage>,
                     Err(error) => println!("Unable to acquire lock: {}", error),
                 }
             },
+            "query;list" => {
+                match getNetworkBufferManager().lock() {
+                    Ok(buffer) => {
+
+                        let tx_packets = buffer.get_tx_packets();
+
+                        let mut i = 0;
+                        for x in tx_packets {
+                            if *x == true {
+                                println!("{}: {}", i, x);
+                            }
+                            i += 1;
+                        }
+
+                    },
+                    Err(error) => println!("Unable to acquire lock: {}", error),
+                }
+            },
             "help"  => {
                 println!("Help menu...");
                 print_help_menu();
             },
             "send"  => {
                 println!("Sending to server");
-                let container = ThreadMessage {
-                    string: String::from("xfer"),
-                    param1: arg1,
-                    param2: 0,
-                    param3: 0,
-                };
-
-                let _  = tx_user_input.send(container);            },
+                let container = build_message(MessageType::SEND, 0, 0, 0);
+                let _  = tx_user_input.send(container);
+            },
             "exit" | "q" => {
-                let _ = tx_exit_thread.send(String::new());
+                let _ = tx_exit_thread.send(MessageType::EXIT);
             },
             _      => {
                 println!("Command not recognized...");
@@ -194,10 +220,10 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
 
         match _m {
             Ok(message) => {
-                if message.string == "xfer" {
+                if message.action == MessageType::SEND {
                     send_to_localhost_port(&skt, &ip, get_port_server());
                 }
-                else if message.string == "insert" {
+                else if message.action == MessageType::INSERT {
                     //println!("Inserting...");
                     match getNetworkBufferManager().lock() {
                         Ok(mut buffer) => {
@@ -210,7 +236,7 @@ fn start_transfer_socket(skt: &mio::udp::UdpSocket,
                         Err(error) => {println!("This is poison: {:?}", error);},
                     }
                 }
-                else if message.string == "remove" {
+                else if message.action == MessageType::REMOVE {
                     match getNetworkBufferManager().lock() {
                         Ok(mut buffer) => {
                             let result = buffer.remove(message.param1);
@@ -264,7 +290,7 @@ fn main() {
 
     let (tx_user_input, rx_user_input) = mioco::sync::mpsc::sync_channel::<ThreadMessage>(5);
     let (tx_to_socket, rx_from_socket_chnl) = mioco::sync::mpsc::sync_channel::<ThreadMessage>(5);
-    let (tx_exit_thread, rx_exit_thread) = mioco::sync::mpsc::sync_channel::<String>(5);
+    let (tx_exit_thread, rx_exit_thread) = mioco::sync::mpsc::sync_channel::<MessageType>(5);
 
     let ip = net::Ipv4Addr::new(0, 0, 0, 0);
     let listen_addr = net::SocketAddrV4::new(ip, 8888);//get_port_client());
@@ -289,13 +315,13 @@ fn main() {
                 r:rx_user_input => {
                     match rx_user_input.recv(){
                         Ok(message) => {
-                            if message.string  == String::from("xfer") {
+                            if message.action  == MessageType::SEND {
                                 let _ = tx_to_socket.send(message);
                             }
-                            else if message.string == String::from("insert") {
+                            else if message.action == MessageType::INSERT {
                                 let _ = tx_to_socket.send(message);
                             }
-                            else if message.string == String::from("remove") {
+                            else if message.action == MessageType::REMOVE {
                                 let _ = tx_to_socket.send(message);
                             }
                         },
