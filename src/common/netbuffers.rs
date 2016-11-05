@@ -73,7 +73,6 @@
 
 use packet::Packet;
 use debug::*;
-use lazy_static;
 use std::sync::Mutex;
 use std::fmt;
 
@@ -110,8 +109,8 @@ impl fmt::Debug for NetworkBufferManager {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // replace with an iterator
         for i in 0..MAX_PACKET_BUFFER_SIZE {
-            write!(f, "{}", i);
-            write!(f, "{:?}\n", self.sent_packet_buffer[i]);
+            let _ = write!(f, "{}", i);
+            let _ = write!(f, "{:?}\n", self.sent_packet_buffer[i]);
         }
         write!(f, "\nLength: {}", self.length)
     }
@@ -206,7 +205,7 @@ impl NetworkBufferManager {
     }
 
     pub fn peek(&self, index : usize) -> Result<Packet, String> {
-        if index < MAX_PACKET_BUFFER_SIZE {
+        if index < MAX_PACKET_BUFFER_SIZE && self.tx_packets[index]{
             Result::Ok(self.sent_packet_buffer[index].clone())
         }
         else {
@@ -214,8 +213,32 @@ impl NetworkBufferManager {
         }
     }
 
-    pub fn get_tx_packets(&self) -> &Vec<bool> {
+    fn get_tx_packets(&self) -> &Vec<bool> {
         self.tx_packets.as_ref()
+    }
+
+    pub fn get_transmitable_packets(&self) -> Vec<bool> {
+        // high priority packets first
+        // then everyone else
+        vec![false]
+    }
+
+    pub fn query_list(&self) {
+        let tx_packets = self.get_tx_packets();
+
+        let mut i = 0;
+        let mut empty = true;
+        for x in tx_packets {
+            if *x == true {
+                println!("{}: {}", i, x);
+                empty = false;
+            }
+            i += 1;
+        }
+
+        if empty {
+            println!("No packets have been inserted");
+        }
     }
 }
 
@@ -223,7 +246,7 @@ lazy_static! {
     pub static ref UDP_BUFFER: Mutex<NetworkBufferManager> = Mutex::new(NetworkBufferManager::new());
 }
 
-pub fn getNetworkBufferManager() -> &'static UDP_BUFFER {
+pub fn get_network_buffer_manager() -> &'static UDP_BUFFER {
     &UDP_BUFFER
 }
 
