@@ -318,7 +318,11 @@ fn main() {
                             if  message.action == MessageType::SEND
                              || message.action == MessageType::INSERT
                              || message.action == MessageType::REMOVE {
+<<<<<<< HEAD
                                 let _ = tx_net_buff_handler.send(message);
+=======
+                                let _ = tx_to_socket.send(message);
+>>>>>>> c0980a05d67b44ccd6ca610b95655528849ccdaa
                             }
                         },
                         Err(error) => println!("Error encountered! {}", error)
