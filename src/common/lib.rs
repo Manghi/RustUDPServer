@@ -13,4 +13,5 @@ pub mod communicate;
 pub mod packet;
 pub mod utils;
 pub mod netbuffers;
+#[allow(non_snake_case)]
 pub mod net;
