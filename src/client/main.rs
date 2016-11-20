@@ -318,7 +318,9 @@ fn main() {
                             if  message.action == MessageType::SEND
                              || message.action == MessageType::INSERT
                              || message.action == MessageType::REMOVE {
+                                 
                                 let _ = tx_net_buff_handler.send(message);
+
                             }
                         },
                         Err(error) => println!("Error encountered! {}", error)
