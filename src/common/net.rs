@@ -11,6 +11,8 @@
 
 use std::net;
 use std::mem;
+use std::cmp::Ordering;
+use std::collections::{VecDeque};
 use net2::UdpBuilder;
 use mioco;
 use mio;
@@ -43,6 +45,7 @@ struct Socket {
 }
 
 impl Socket {
+
     pub fn open(listen_on: net::SocketAddrV4) -> Socket {
 
         let udp;
@@ -141,12 +144,36 @@ impl Address {
     // need to implement ==, !=, <, >
 }
 
+impl PartialEq  for Address {
 
+    fn eq(&self, other: &Address) -> bool {
+        self.address == other.address && self.port == other.port
+    }
 
+    fn ne(&self, other: &Address) -> bool {
+        self.address != other.address
+    }
+}
 
+impl PartialOrd  for Address {
 
+    fn partial_cmp(&self, other: &Address) -> Option<Ordering> {
+        Some(self.address.cmp(&other.address))
+    }
 
-
+    fn lt(&self, other: &Address) -> bool {
+        self.address < other.address
+    }
+    fn le(&self, other: &Address) -> bool {
+        self.address <= other.address
+    }
+    fn gt(&self, other: &Address) -> bool {
+        self.address > other.address
+    }
+    fn ge(&self, other: &Address) -> bool {
+        self.address >= other.address
+    }
+}
 
 
 struct Connection {
@@ -183,6 +210,7 @@ impl Connection {
 
     pub fn Start(&mut self, port: u16) -> bool {
         assert_eq!(self.running, false);
+
         println!("Starting connection on port {}", port);
 
         self.running = true;
@@ -192,6 +220,7 @@ impl Connection {
 
     pub fn Stop(&mut self) {
         assert!(self.IsRunning(), true);
+
         println!("Stop connection...");
 
         let connected = self.IsConnected();
@@ -259,6 +288,7 @@ impl Connection {
 
     pub fn Update(&mut self, deltaTime: f32) {
         assert!(self.IsRunning(), true);
+
         self.timeout_accumulator += deltaTime;
 
         if self.timeout_accumulator > self.timeout {
@@ -281,6 +311,7 @@ impl Connection {
 
     fn SendPacket(&self, data: &Vec<u8>, size: usize) -> bool {
         assert!(self.IsRunning(), true);
+
         if self.address.getAddress() == NO_ADDRESS {
             return false;
         }
@@ -299,9 +330,6 @@ impl Connection {
 
     fn ReceivePacket(&self, data: &Vec<u8>, size: usize) {
         assert!(self.IsRunning(), true);
-
-        // Socket receieve
-
 
     }
 
@@ -324,6 +352,201 @@ impl Connection {
     }
 
     fn OnDisconnect(&mut self) {
+
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[derive(Clone)]
+struct PacketData {
+    sequence: u32,
+    size: u32,
+    time: f32,
+}
+
+impl PartialEq  for PacketData {
+
+    fn eq(&self, other: &PacketData) -> bool {
+        self.sequence == other.sequence && self.size == other.size && self.time == other.time
+    }
+
+    fn ne(&self, other: &PacketData) -> bool {
+        self.sequence != other.sequence && self.size != other.size && self.time != other.time
+    }
+}
+
+pub fn sequence_more_recent( s1: &u32, s2: &u32, max_sequence: &u32 ) -> bool
+{
+    ( s1 > s2 ) && ( s1 - s2 <= max_sequence/2 ) ||
+    ( s2 > s1 ) && ( s2 - s1 >  max_sequence/2 )
+}
+
+
+struct PacketQueue {
+    queue : VecDeque<PacketData>,
+}
+
+impl PacketQueue {
+    pub fn new() -> PacketQueue {
+        PacketQueue {
+            queue : VecDeque::new(),
+        }
+    }
+
+    pub fn exists(&self, sequence: u32) -> bool {
+        let mut iterator = self.queue.iter();
+
+        let mut found = false;
+
+        loop {
+            match iterator.next() {
+                Some(nextPacketData) => {
+                    if nextPacketData.sequence == sequence {
+                        found = true;
+                        break;
+                    }
+                },
+                None => {
+                    break;
+                },
+            }
+        }
+        found
+    }
+
+    pub fn insert_sorted(&mut self, packet_data: PacketData, max_sequence: u32)
+    {
+        if self.queue.is_empty() {
+            self.push_back(packet_data)
+        }
+        else {
+
+            match self.front() {
+                Some(front) => {
+                    if !sequence_more_recent(&packet_data.sequence, &front.sequence, &max_sequence ) {
+                        self.push_front(packet_data.clone());
+                        return;
+                    }
+                },
+                None => {}
+            }
+
+            match self.back() {
+                Some(last) => {
+                    if sequence_more_recent(&packet_data.sequence, &last.sequence, &max_sequence ) {
+                        self.push_back(packet_data.clone());
+                        return;
+                    }
+                },
+                None => {}
+            }
+
+            {
+                let mut iterator = self.queue.iter().enumerate();
+
+                loop {
+                    match iterator.next() {
+                        Some((index, nextPacketData)) => {
+                            assert_eq!(nextPacketData.sequence, packet_data.sequence);
+                            if sequence_more_recent(&nextPacketData.sequence, &packet_data.sequence, &max_sequence) {
+                                self.queue.insert(index, packet_data.clone());
+                                break;
+                            }
+                        },
+                        None => {
+                            println!("ERROR: Could not insert packet...");
+                            break;
+                        },
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn push_back(&mut self, data: PacketData) {
+        self.queue.push_back(data);
+    }
+
+    pub fn front(&self) -> Option<PacketData> {
+        match self.queue.front() {
+            Some(pd) => {
+                Some(pd.clone())
+            },
+            None => {
+                None
+            }
+        }
+    }
+
+    pub fn back(&self) -> Option<PacketData> {
+        match self.queue.back() {
+            Some(pd) => {
+                Some(pd.clone())
+            },
+            None => {
+                None
+            }
+        }
+    }
+
+    pub fn push_front(&mut self, data: PacketData) {
+        self.queue.push_front(data);
+    }
+}
+
+
+
+
+
+#[cfg(test)]
+mod test {
+
+    use net;
+
+    #[test]
+    fn TestSequenceMoreRecent() {
+        assert_eq!(true, net::sequence_more_recent(&4, &1, &10));
+        assert_eq!(false, net::sequence_more_recent(&1, &4, &10));
+    }
+
+    #[test]
+    fn TestPacketQueueExists() {
+        let mut packet_queue = net::PacketQueue::new();
+        let mut packet_data = net::PacketData {
+                sequence: 100,
+                size: 100,
+                time: 4.17,
+        };
+
+        packet_queue.push_back(packet_data.clone());
+        packet_data.sequence += 1;
+
+        packet_queue.push_back(packet_data.clone());
+        packet_data.sequence += 1;
+
+        packet_queue.push_back(packet_data.clone());
+        packet_data.sequence += 1;
+
+        assert_eq!(packet_queue.exists(100), true);
+        assert_eq!(packet_queue.exists(102), true);
+        assert_eq!(packet_queue.exists(99), false);
 
     }
 }
