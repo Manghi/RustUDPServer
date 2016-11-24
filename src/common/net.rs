@@ -12,12 +12,12 @@
 use std::net;
 use std::mem;
 use std::cmp::Ordering;
+use std::option;
+use std::fmt;
 use std::collections::{VecDeque};
 use net2::UdpBuilder;
 use mioco;
 use mio;
-
-const NO_ADDRESS : &'static str = "0.0.0.0";
 
 #[derive(PartialEq)]
 enum State {
@@ -119,21 +119,21 @@ impl Socket {
     }
 }
 
-
+#[derive(Clone)]
 struct Address {
-    address : String,
+    address : net::Ipv4Addr,
     port : u16
 }
 
 impl Address {
-    pub fn new(address : String, port : u16) -> Address {
+    pub fn new(address : net::Ipv4Addr, port : u16) -> Address {
         Address {
             address : address,
             port : port,
         }
     }
 
-    pub fn getAddress(&self) -> String {
+    pub fn getAddress(&self) -> net::Ipv4Addr {
         self.address.clone()
     }
 
@@ -141,7 +141,9 @@ impl Address {
         self.port.clone()
     }
 
-    // need to implement ==, !=, <, >
+    pub fn empty_address() -> net::Ipv4Addr {
+        net::Ipv4Addr::new(0,0,0,0)
+    }
 }
 
 impl PartialEq  for Address {
@@ -200,7 +202,7 @@ impl Connection {
             running : false,
             state : State::Disconnected,
             timeout_accumulator : 0.0,
-            address : Address::new(String::from("0.0.0.0"), 0),
+            address : Address::new(ip, port),
             socket : Socket::open(listen_addr),
         };
 
@@ -208,10 +210,10 @@ impl Connection {
         new_connection
     }
 
-    pub fn Start(&mut self, port: u16) -> bool {
+    pub fn Start(&mut self) -> bool {
         assert_eq!(self.running, false);
 
-        println!("Starting connection on port {}", port);
+        println!("Starting connection on port (self.address.port){}", self.address.port);
 
         self.running = true;
         self.OnStart();
@@ -250,8 +252,8 @@ impl Connection {
         self.state = State::Listening;
     }
 
-    pub fn Connect(&mut self) {
-        println!("Connecting to {}", "_______");
+    pub fn Connect(&mut self, dest_addr : &Address) {
+        println!("Connecting to {}:{}", dest_addr.getAddress(), dest_addr.getPort());
 
         let isConnected = self.IsConnected();
         self.ClearData();
@@ -262,8 +264,7 @@ impl Connection {
 
         self.mode = Mode::Client;
         self.state = State::Connecting;
-        //TODO: Figuruing out addressng
-        //self.address = address;
+        self.address = (*dest_addr).clone();
     }
 
     pub fn IsConnecting(&self) -> bool {
@@ -310,9 +311,9 @@ impl Connection {
     }
 
     fn SendPacket(&self, data: &Vec<u8>, size: usize) -> bool {
-        assert!(self.IsRunning(), true);
+        assert_eq!(self.IsRunning(), true);
 
-        if self.address.getAddress() == NO_ADDRESS {
+        if self.address.getAddress() == Address::empty_address() {
             return false;
         }
 
@@ -325,6 +326,8 @@ impl Connection {
         // TODO: Integrate with my current functional framework
 
         mem::replace::<(Vec<u8>)>(&mut packet, (data.clone()));
+
+        self.socket.send(&self.address.getAddress(), self.address.getPort(), packet);
         true
     }
 
@@ -336,7 +339,7 @@ impl Connection {
     fn ClearData(&mut self) {
         self.state = State::Disconnected;
         self.timeout_accumulator = 0.0;
-        self.address = Address::new(String::from("0.0.0.0"), 0);
+        self.address = Address::new(Address::empty_address().clone(), 0);
     }
 
     fn OnStart(&mut self) {
@@ -374,11 +377,19 @@ impl Connection {
 
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct PacketData {
     sequence: u32,
     size: u32,
     time: f32,
+}
+
+impl fmt::Display for PacketData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "PacketData:\n
+        Sequence: {}\n
+        Time: {}\n", self.sequence, self.time)
+    }
 }
 
 impl PartialEq  for PacketData {
@@ -398,6 +409,8 @@ pub fn sequence_more_recent( s1: &u32, s2: &u32, max_sequence: &u32 ) -> bool
     ( s2 > s1 ) && ( s2 - s1 >  max_sequence/2 )
 }
 
+const MIN_QUEUE_SIZE: usize = 0;
+const MAX_QUEUE_SIZE: usize = 0x20;
 
 struct PacketQueue {
     queue : VecDeque<PacketData>,
@@ -458,29 +471,52 @@ impl PacketQueue {
                 None => {}
             }
 
-            {
-                let mut iterator = self.queue.iter().enumerate();
+            let insertion_index = self.find_sequence_insertion_point(packet_data.sequence, max_sequence);
 
-                loop {
-                    match iterator.next() {
-                        Some((index, nextPacketData)) => {
-                            assert_eq!(nextPacketData.sequence, packet_data.sequence);
-                            if sequence_more_recent(&nextPacketData.sequence, &packet_data.sequence, &max_sequence) {
-                                self.queue.insert(index, packet_data.clone());
-                                break;
-                            }
-                        },
-                        None => {
-                            println!("ERROR: Could not insert packet...");
-                            break;
-                        },
+            if insertion_index != 0xFF && self.is_index_valid(insertion_index) {
+                // Check that we are not inserting a packet which is already present
+                match self.get_packet(insertion_index) {
+                    Some(packet_at_index) => {
+                        assert!(packet_at_index.sequence != packet_data.sequence);
+                    },
+                    None => {
+                        panic!("How did we find a packet at this index? {}", insertion_index);
                     }
                 }
+
+                self.queue.insert(insertion_index, packet_data.clone());
             }
         }
     }
 
-    pub fn push_back(&mut self, data: PacketData) {
+    pub fn verify_sequencing(&self, max_sequence: u32) {
+        let mut iterator = self.queue.iter();
+
+        let mut previous = iterator.clone().last();
+        let mut previousPacket = previous.unwrap();
+
+        loop {
+            match iterator.next() {
+                Some(nextPacketData) => {
+                    assert!(nextPacketData.sequence <= max_sequence);
+
+                    if nextPacketData != previousPacket  {
+                        assert!( sequence_more_recent(&(nextPacketData.sequence), &(previousPacket.sequence), &max_sequence) );
+                        previousPacket = nextPacketData;
+                    }
+                },
+                None => {
+                    break;
+                },
+            }
+        }
+    }
+
+    pub fn get_packet(&self, index: usize) -> option::Option<&PacketData> {
+        self.queue.get(index)
+    }
+
+    fn push_back(&mut self, data: PacketData) {
         self.queue.push_back(data);
     }
 
@@ -506,9 +542,65 @@ impl PacketQueue {
         }
     }
 
-    pub fn push_front(&mut self, data: PacketData) {
+    fn push_front(&mut self, data: PacketData) {
         self.queue.push_front(data);
     }
+
+
+    pub fn is_index_valid(&self, index: usize) -> bool {
+        index > MIN_QUEUE_SIZE && index < MAX_QUEUE_SIZE
+    }
+
+    pub fn find_sequence_insertion_point(&self, sequence_num: u32, max_sequence: u32) -> usize {
+        let mut insertion_index = 0xFF;
+        {
+            let mut iterator = self.queue.iter().enumerate();
+
+            loop {
+                match iterator.next() {
+                    Some((index, nextPacketData)) => {
+                        println!("INS_IDX:nextPacketData.sequence={}, sequence_num={}", nextPacketData.sequence, sequence_num);
+
+                        if sequence_more_recent(&nextPacketData.sequence, &sequence_num, &max_sequence) {
+                            insertion_index = index;
+                            break;
+                        }
+                    },
+                    None => {
+                        println!("End of list. Insertion Index: {}", insertion_index);
+                        break;
+                    },
+                }
+            }
+        }
+        insertion_index
+    }
+
+    pub fn find_index_for_sequence(&self, sequence_num: u32) -> usize {
+        let mut packet_index = 0xFF;
+        {
+            let mut iterator = self.queue.iter().enumerate();
+
+            loop {
+                match iterator.next() {
+                    Some((index, nextPacketData)) => {
+                        println!("GET_IDX:nextPacketData.sequence={}, sequence_num={}", nextPacketData.sequence, sequence_num);
+
+                        if nextPacketData.sequence == sequence_num {
+                            packet_index = index;
+                            break;
+                        }
+                    },
+                    None => {
+                        println!("End of list. Sequence Number Not Found: {}", sequence_num);
+                        break;
+                    },
+                }
+            }
+        }
+        packet_index
+    }
+
 }
 
 
@@ -548,5 +640,191 @@ mod test {
         assert_eq!(packet_queue.exists(102), true);
         assert_eq!(packet_queue.exists(99), false);
 
+    }
+
+    #[test]
+    fn TestInsertQueueAtHead() {
+        let mut packet_queue = net::PacketQueue::new();
+        let mut packet_data = net::PacketData {
+                sequence: 100,
+                size: 100,
+                time: 4.17,
+        };
+        let max_sequence = 0xFFFF as u32;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        assert_eq!(packet_queue.exists(100), true);
+        assert_eq!(packet_queue.exists(101), true);
+        assert_eq!(packet_queue.exists(102), true);
+        assert_eq!(packet_queue.exists(99), false);
+
+        println!("{:?}", packet_queue.queue);
+
+        packet_data.sequence = 99;
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+
+        assert_eq!(packet_queue.exists(99), true);
+        let index = packet_queue.find_index_for_sequence(99);
+
+        println!("{:?}", packet_queue.queue);
+
+        assert_eq!(index, 0);
+    }
+
+    #[test]
+    fn TestInsertQueueAtTail() {
+        let mut packet_queue = net::PacketQueue::new();
+        let mut packet_data = net::PacketData {
+                sequence: 100,
+                size: 100,
+                time: 4.17,
+        };
+        let max_sequence = 0xFFFF as u32;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        assert_eq!(packet_queue.exists(100), true);
+        assert_eq!(packet_queue.exists(101), true);
+        assert_eq!(packet_queue.exists(102), true);
+        assert_eq!(packet_queue.exists(103), false);
+
+        packet_data.sequence = 103;
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+
+        assert_eq!(packet_queue.exists(103), true);
+        let index = packet_queue.find_index_for_sequence(103);
+        assert_eq!(index, 3);
+    }
+
+    #[test]
+    fn TestInsertQueueAtMiddle() {
+        let mut packet_queue = net::PacketQueue::new();
+        let mut packet_data = net::PacketData {
+                sequence: 100,
+                size: 100,
+                time: 4.17,
+        };
+        let max_sequence = 0xFFFF as u32;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 2;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+
+        assert_eq!(packet_queue.exists(100), true);
+        assert_eq!(packet_queue.exists(101), true);
+        assert_eq!(packet_queue.exists(103), true);
+        assert_eq!(packet_queue.exists(102), false);
+
+        packet_data.sequence = 102;
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+
+        assert_eq!(packet_queue.exists(102), true);
+        let index = packet_queue.find_index_for_sequence(102);
+        assert_eq!(index, 2);
+    }
+
+    #[test]
+    fn TestSequenceNotPresent() {
+        let mut packet_queue = net::PacketQueue::new();
+        let mut packet_data = net::PacketData {
+                sequence: 100,
+                size: 100,
+                time: 4.17,
+        };
+        let max_sequence = 0xFFFF as u32;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 2;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+
+        assert_eq!(packet_queue.exists(100), true);
+        assert_eq!(packet_queue.exists(101), true);
+        assert_eq!(packet_queue.exists(103), true);
+        assert_eq!(packet_queue.exists(102), false);
+
+        packet_data.sequence = 108;
+
+        assert_eq!(packet_queue.exists(108), false);
+        let index = packet_queue.find_index_for_sequence(108);
+        assert_eq!(index, 0xFF);
+    }
+
+    #[test]
+    fn TestVerifySequencingPass() {
+        let mut packet_queue = net::PacketQueue::new();
+        let mut packet_data = net::PacketData {
+                sequence: 100,
+                size: 100,
+                time: 4.17,
+        };
+        let max_sequence = 0xFFFF as u32;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 1;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_data.sequence += 2;
+
+        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+
+        assert_eq!(packet_queue.exists(100), true);
+        assert_eq!(packet_queue.exists(101), true);
+        assert_eq!(packet_queue.exists(103), true);
+        assert_eq!(packet_queue.exists(102), false);
+
+        packet_queue.verify_sequencing(0xFFFF); // assertions within will fail if not sorted
+    }
+
+    #[test]
+    #[should_panic]
+    fn TestVerifySequencingFail() {
+        let mut packet_queue = net::PacketQueue::new();
+        let mut packet_data = net::PacketData {
+                sequence: 100,
+                size: 100,
+                time: 4.17,
+        };
+        let max_sequence = 0xFFFF as u32;
+
+        packet_queue.push_front(packet_data.clone());
+        packet_data.sequence -= 1;
+
+        packet_queue.push_front(packet_data.clone());
+        packet_data.sequence += 0xFFFF;
+
+        packet_queue.push_front(packet_data.clone());
+
+        assert_eq!(packet_queue.exists(100), true);
+        assert_eq!(packet_queue.exists(99), true);
+        assert_eq!(packet_queue.exists(101), true);
+        assert_eq!(packet_queue.exists(102), false);
+
+        println!("{:?}", packet_queue.queue);
+
+
+        packet_queue.verify_sequencing(0xFFFF); // assertions within will fail if not sorted
     }
 }
