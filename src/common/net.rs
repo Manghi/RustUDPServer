@@ -187,6 +187,7 @@ struct Connection {
     socket : Socket,
     timeout_accumulator : f32,
     address : Address,  // Our destination
+
 }
 
 impl Connection {
@@ -333,6 +334,7 @@ impl Connection {
 
     fn ReceivePacket(&self, data: &Vec<u8>, size: usize) {
         assert!(self.IsRunning(), true);
+        // TODO
 
     }
 
@@ -342,12 +344,13 @@ impl Connection {
         self.address = Address::new(Address::empty_address().clone(), 0);
     }
 
+    // TODO
     fn OnStart(&mut self) {
 
     }
 
     fn OnStop(&mut self) {
-
+        self.ClearData();
     }
 
     fn OnConnect(&mut self) {
@@ -355,7 +358,7 @@ impl Connection {
     }
 
     fn OnDisconnect(&mut self) {
-
+        self.ClearData();
     }
 }
 
@@ -364,6 +367,242 @@ impl Connection {
 
 
 
+
+
+
+
+struct ReliableSystem {
+    max_sequence : u32,
+    local_sequence : u32,
+    remote_sequence : u32,
+
+    sent_packets : u32,
+    recv_packets : u32,
+    lost_packets : u32,
+    acked_packets: u32,
+
+    sent_bandwidth : f32,
+    acked_bandwidth : f32,
+    rtt : f32,
+    rtt_maximum : f32,
+
+    acks : Vec<u32>,
+
+    sentQueue : PacketQueue,
+    pendingAckQueue : PacketQueue,
+    receivedQueue : PacketQueue,
+    ackedQueue : PacketQueue
+}
+
+impl ReliableSystem {
+    pub fn new( max_sequence : u32) -> ReliableSystem {
+        let mut reliable_system = ReliableSystem {
+            max_sequence : max_sequence,
+            local_sequence : 0,
+            remote_sequence : 0,
+
+            sent_packets : 0,
+            recv_packets : 0,
+            lost_packets : 0,
+            acked_packets: 0,
+
+            sent_bandwidth : 0.0,
+            acked_bandwidth : 0.0,
+            rtt : 0.0,
+            rtt_maximum : 1.0,
+
+            acks : Vec::<u32>::new(),
+
+            sentQueue : PacketQueue::new(),
+            pendingAckQueue : PacketQueue::new(),
+            receivedQueue : PacketQueue::new(),
+            ackedQueue : PacketQueue::new()
+        };
+        reliable_system.reset();
+
+        reliable_system
+    }
+
+    pub fn reset(&mut self) {
+        self.local_sequence = 0;
+        self.remote_sequence = 0;
+        self.sentQueue.clear();
+        self.receivedQueue.clear();
+        self.pendingAckQueue.clear();
+        self.ackedQueue.clear();
+        self.sent_packets = 0;
+        self.recv_packets = 0;
+        self.lost_packets = 0;
+        self.acked_packets = 0;
+        self.sent_bandwidth = 0.0;
+        self.acked_bandwidth = 0.0;
+        self.rtt = 0.0;
+        self.rtt_maximum = 1.0;
+    }
+
+    pub fn PacketSent(&mut self, size: usize) {
+
+    }
+
+    pub fn PacketReceived(&mut self, size: usize) {
+
+    }
+
+    pub fn GenerateAckBits(&mut self) -> u32 {
+
+    }
+
+    pub fn ProcessAck(&mut self, ack: u32, ack_bits: u32) {
+
+    }
+
+    pub fn Update(&mut self, deltaTime: f32) {
+
+    }
+
+    pub fn Validate(&self) {
+
+    }
+
+    fn bit_index_for_sequence(&self, sequence: u32, ack: u32, max_sequence: u32) -> i32 {
+
+    }
+
+    fn generate_ack_bits(ack: u32, receive_queue: &PacketQueue, max_sequence: u32) -> u32 {
+
+    }
+
+    fn process_ack(ack: u32, ack_bits: u32, pending_ack_queue: &PacketQueue, acked_queue : &PacketQueue,
+                   acks: &Vec::<u32>, acked_packets: u32, rtt: &f32, max_sequence: u32) {
+
+    }
+
+    pub fn get_local_sequence(&self) -> u32 {
+        self.local_sequence
+    }
+
+    pub fn get_remote_sequence(&self) -> u32 {
+        self.remote_sequence
+    }
+
+    pub fn get_max_sequence(&self) -> u32 {
+        self.max_sequence
+    }
+
+    pub fn get_acks(&mut self, acks: &mut u32, count: &mut u32) {
+        *acks = self.acks[0];
+        *count = self.acks.len() as u32;
+    }
+
+    pub fn get_sent_packets(&self) -> u32 {
+        self.sent_packets
+    }
+
+    pub fn get_received_packets(&self) -> u32 {
+        self.recv_packets
+    }
+
+    pub fn get_lost_packets(&self) -> u32 {
+        self.lost_packets
+    }
+
+    pub fn get_acked_packets(&self) -> u32 {
+        self.acked_packets
+    }
+
+    pub fn get_sent_bandwidth(&self) -> u32 {
+        self.sent_bandwidth
+    }
+
+    pub fn get_acked_bandwidth(&self) -> u32 {
+        self.acked_bandwidth
+    }
+
+    pub fn get_round_trip_time(&self) -> u32 {
+        self.rtt
+    }
+
+    pub fn get_header_size(&self) -> usize {
+        12
+    }
+
+    pub fn AdvanceQueueTimes(&self, deltaTime: f32) {
+
+    }
+
+    pub fn UpdateQueues(&self) {
+
+    }
+
+    pub fn UpdateStats(&self) {
+
+    }
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct ReliableConnection {
+    connection : Connection,
+    reliable_system : ReliableSystem,
+    packet_loss_mask : u32,
+}
+
+impl ReliableConnection {
+    pub fn new(protocol_id: u32, timeout: f32, max_sequence : u32, port: u16) -> ReliableConnection {
+        let mut reliableConnection = ReliableConnection {
+            connection : Connection::new(protocol_id as usize, timeout, port),
+            reliable_system : ReliableSystem::new(max_sequence),
+            packet_loss_mask : 0,
+        };
+        reliableConnection.connection.ClearData();
+        reliableConnection
+    }
+
+    pub fn SendPacket(&mut self, data: Vec::<u32>, size: usize) -> bool {
+
+    }
+
+    pub fn ReceivePacket(&mut self, data: Vec::<u32>, size: usize) -> u32 {
+
+    }
+
+    pub fn Update(&self, deltaTime: f32) {
+
+    }
+
+    pub fn GetHeaderSize(&self) -> u32 {
+        self.reliable_system.get_header_size() + self.connection.get_header_size()
+    }
+
+    pub fn GetReliabilitySystem(&self) -> &ReliableSystem {
+        &self.reliable_system
+    }
+
+    pub fn SetPacketLossMask(&self, mask: u32) {
+        self.packet_loss_mask = mask;
+    }
+
+    fn ClearData(&mut self) {
+        self.reliable_system.reset();
+    }
+}
 
 
 
@@ -601,6 +840,10 @@ impl PacketQueue {
         packet_index
     }
 
+    pub fn clear(&mut self) {
+        self.queue.clear();
+    }
+
 }
 
 
@@ -650,7 +893,7 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFF as u32;
+        let max_sequence = 0xFFFFFFFF  as u32;
 
         packet_queue.insert_sorted(packet_data.clone(), max_sequence);
         packet_data.sequence += 1;
@@ -687,7 +930,7 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFF as u32;
+        let max_sequence = 0xFFFFFFFF  as u32;
 
         packet_queue.insert_sorted(packet_data.clone(), max_sequence);
         packet_data.sequence += 1;
@@ -719,7 +962,7 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFF as u32;
+        let max_sequence = 0xFFFFFFFF  as u32;
 
         packet_queue.insert_sorted(packet_data.clone(), max_sequence);
         packet_data.sequence += 1;
@@ -750,7 +993,7 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFF as u32;
+        let max_sequence = 0xFFFFFFFF  as u32;
 
         packet_queue.insert_sorted(packet_data.clone(), max_sequence);
         packet_data.sequence += 1;
@@ -780,7 +1023,7 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFF as u32;
+        let max_sequence = 0xFFFFFFFF  as u32;
 
         packet_queue.insert_sorted(packet_data.clone(), max_sequence);
         packet_data.sequence += 1;
@@ -795,7 +1038,7 @@ mod test {
         assert_eq!(packet_queue.exists(103), true);
         assert_eq!(packet_queue.exists(102), false);
 
-        packet_queue.verify_sequencing(0xFFFF); // assertions within will fail if not sorted
+        packet_queue.verify_sequencing(0xFFFFFFFF ); // assertions within will fail if not sorted
     }
 
     #[test]
@@ -807,13 +1050,13 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFF as u32;
+        let max_sequence = 0xFFFFFFFF  as u32;
 
         packet_queue.push_front(packet_data.clone());
         packet_data.sequence -= 1;
 
         packet_queue.push_front(packet_data.clone());
-        packet_data.sequence += 0xFFFF;
+        packet_data.sequence += 0xFFFFFFFF ;
 
         packet_queue.push_front(packet_data.clone());
 
@@ -825,6 +1068,6 @@ mod test {
         println!("{:?}", packet_queue.queue);
 
 
-        packet_queue.verify_sequencing(0xFFFF); // assertions within will fail if not sorted
+        packet_queue.verify_sequencing(0xFFFFFFFF ); // assertions within will fail if not sorted
     }
 }
