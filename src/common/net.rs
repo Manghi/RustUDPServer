@@ -360,6 +360,10 @@ impl Connection {
     fn OnDisconnect(&mut self) {
         self.ClearData();
     }
+
+    pub fn GetHeaderSize() -> usize {
+        4
+    }
 }
 
 
@@ -441,40 +445,152 @@ impl ReliableSystem {
     }
 
     pub fn PacketSent(&mut self, size: usize) {
+        if self.sentQueue.exists(self.local_sequence) {
+            println!("Local sequence {} exists in Sent Queue!", self.local_sequence);
+        }
 
+        assert!(self.sentQueue.exists(self.local_sequence), false);
+        assert!(self.pendingAckQueue.exists(self.local_sequence), false);
+
+        let mut data = PacketData {
+            sequence : self.local_sequence,
+            size : size as u32,
+            time : 0.0,
+        };
+
+        self.sentQueue.push_back(data.clone());
+        self.pendingAckQueue.push_back(data.clone());
+        self.sent_packets += 1;
+        self.local_sequence += 1;
+        if self.local_sequence > self.max_sequence {
+            self.local_sequence = 0;
+        }
     }
 
-    pub fn PacketReceived(&mut self, size: usize) {
+    pub fn PacketReceived(&mut self, sequence: u32, size: usize) {
+        self.recv_packets += 1;
+        if self.receivedQueue.exists(sequence) {
+            return
+        }
 
+        let mut data = PacketData {
+            sequence : sequence,
+            size : size as u32,
+            time : 0.0,
+        };
+
+        self.receivedQueue.push_back(data.clone());
+        if sequence_more_recent(&sequence, &self.remote_sequence, &self.max_sequence ) {
+            self.remote_sequence = sequence;
+        }
     }
 
     pub fn GenerateAckBits(&mut self) -> u32 {
-
+        self.generate_ack_bits(self.get_remote_sequence(), &self.receivedQueue, self.max_sequence)
     }
 
     pub fn ProcessAck(&mut self, ack: u32, ack_bits: u32) {
-
+        self.process_ack(ack, ack_bits);
     }
 
     pub fn Update(&mut self, deltaTime: f32) {
-
+        self.acks.clear();
+        self.AdvanceQueueTimes(deltaTime);
+        self.UpdateQueues();
+        self.UpdateStats();
+        self.Validate();
     }
 
     pub fn Validate(&self) {
-
+        let max_sequence = self.max_sequence;
+        self.sentQueue.verify_sequencing(max_sequence);
+        self.ackedQueue.verify_sequencing(max_sequence);
+        self.pendingAckQueue.verify_sequencing(max_sequence);
+        self.receivedQueue.verify_sequencing(max_sequence);
     }
 
     fn bit_index_for_sequence(&self, sequence: u32, ack: u32, max_sequence: u32) -> i32 {
+        assert!(sequence != ack);
+        assert!(sequence_more_recent(&sequence, &ack, &max_sequence) == false);
 
+        if sequence > ack {
+            assert!(ack < 33);
+            assert!(max_sequence >= sequence);
+            return (ack + (max_sequence - sequence)) as i32
+        }
+        else {
+            assert!(ack >= 1);
+            assert!(sequence <= ack - 1);
+            return (ack - 1 - sequence) as i32
+        }
     }
 
-    fn generate_ack_bits(ack: u32, receive_queue: &PacketQueue, max_sequence: u32) -> u32 {
+    fn generate_ack_bits(&self, ack: u32, receive_queue: &PacketQueue, max_sequence: u32) -> u32 {
+        let mut ack_bits : u32 = 0;
+        {
+            let mut iterator = receive_queue.queue.iter();
 
+            loop {
+                match iterator.next() {
+                    Some(next_packet) => {
+                        if next_packet.sequence == ack || sequence_more_recent(&next_packet.sequence, &ack, &max_sequence) {
+                            break;
+                        }
+
+                        let bit_index = self.bit_index_for_sequence(next_packet.sequence, ack, max_sequence);
+                        if bit_index <= 31 {
+                            ack_bits |= 1 << bit_index;
+                        }
+                    },
+                    None => {break;},
+                }
+            }
+        }
+        ack_bits
     }
 
-    fn process_ack(ack: u32, ack_bits: u32, pending_ack_queue: &PacketQueue, acked_queue : &PacketQueue,
-                   acks: &Vec::<u32>, acked_packets: u32, rtt: &f32, max_sequence: u32) {
+    fn process_ack(&mut self, ack: u32, ack_bits: u32) {
 
+        if self.pendingAckQueue.queue.is_empty() {
+            return;
+        }
+
+        let mut packet_index = 0xFF;
+        {
+            let mut iterator = self.pendingAckQueue.queue.iter();
+            loop {
+                match iterator.next() {
+                    Some(packet_data) => {
+                        let mut acked = false;
+
+                        if packet_data.sequence == ack {
+                            acked = true;
+                        }
+                        else if !sequence_more_recent(&packet_data.sequence, &ack, &self.max_sequence) {
+                            let bit_index = self.bit_index_for_sequence(packet_data.sequence, ack, self.max_sequence);
+                            if bit_index <= 31 {
+                                acked = (1 & (ack_bits >> bit_index)) != 0;
+                            }
+                        }
+
+                        if acked {
+                            self.rtt += (packet_data.time - self.rtt) * 0.1;
+
+                            self.ackedQueue.insert_sorted(packet_data.clone(), self.max_sequence);
+                            self.acks.push(packet_data.sequence);
+                            self.acked_packets += 1;
+
+                            packet_index = self.pendingAckQueue.find_index_for_sequence(packet_data.sequence);
+                        }
+                    },
+                    None => {break;},
+                }
+            }
+        }
+
+        if packet_index != 0xFF && self.pendingAckQueue.is_index_valid(packet_index) {
+            self.pendingAckQueue.queue.remove(packet_index);
+        }
     }
 
     pub fn get_local_sequence(&self) -> u32 {
@@ -510,27 +626,113 @@ impl ReliableSystem {
         self.acked_packets
     }
 
-    pub fn get_sent_bandwidth(&self) -> u32 {
+    pub fn get_sent_bandwidth(&self) -> f32 {
         self.sent_bandwidth
     }
 
-    pub fn get_acked_bandwidth(&self) -> u32 {
+    pub fn get_acked_bandwidth(&self) -> f32 {
         self.acked_bandwidth
     }
 
-    pub fn get_round_trip_time(&self) -> u32 {
+    pub fn get_round_trip_time(&self) -> f32 {
         self.rtt
     }
 
-    pub fn get_header_size(&self) -> usize {
+    pub fn GetHeaderSize() -> usize {
         12
     }
 
-    pub fn AdvanceQueueTimes(&self, deltaTime: f32) {
+    pub fn AdvanceQueueTimes(&mut self, deltaTime: f32) {
+        for packet in &mut self.sentQueue.queue {
+            packet.time += deltaTime;
+        }
 
+        for packet in &mut self.receivedQueue.queue {
+            packet.time += deltaTime;
+        }
+
+        for packet in &mut self.pendingAckQueue.queue {
+            packet.time += deltaTime;
+        }
+
+        for packet in &mut self.ackedQueue.queue {
+            packet.time += deltaTime;
+        }
     }
 
-    pub fn UpdateQueues(&self) {
+    pub fn UpdateQueues(&mut self) {
+        let epsilon : f32 = 0.0001;
+
+        loop {
+            match self.sentQueue.front() {
+                Some(sent_packet) => {
+                    if sent_packet.time > self.rtt_maximum + epsilon {
+                        let _ = self.sentQueue.queue.pop_front();
+                    }
+                },
+                None => {break;}
+            }
+
+            if self.sentQueue.queue.len() == 0 {
+                break;
+            }
+        }
+
+        if self.receivedQueue.queue.len() != 0 {
+            match self.receivedQueue.back() {
+                Some(received_packet) => {
+                    let latest_sequence = received_packet.sequence;
+                    let minimum_sequence = if latest_sequence >= 34  {latest_sequence - 34} else { self.max_sequence - (34 - latest_sequence)};
+
+                    loop {
+                        match self.receivedQueue.front() {
+                            Some(recv_front_packet) => {
+                                if !sequence_more_recent(&recv_front_packet.sequence, &minimum_sequence, &self.max_sequence) {
+                                    let _ = self.receivedQueue.queue.pop_front();
+                                }
+                            },
+                            None => {break;},
+                        }
+
+                        if self.receivedQueue.queue.len() == 0 {
+                            break;
+                        }
+                    }
+                },
+                None => {},
+            }
+        }
+
+        loop {
+            match self.ackedQueue.front() {
+                Some(acked_packet) => {
+                    if acked_packet.time > (self.rtt_maximum*2.0) - epsilon {
+                        let _ = self.ackedQueue.queue.pop_front();
+                    }
+                },
+                None => {break;},
+            }
+
+            if self.ackedQueue.queue.len() == 0 {
+                break;
+            }
+        }
+
+        loop {
+            match self.pendingAckQueue.front() {
+                Some(pending_ack_packet) => {
+                    if pending_ack_packet.time > self.rtt_maximum + epsilon {
+                        let _ = self.pendingAckQueue.queue.pop_front();
+                        self.lost_packets += 1;
+                    }
+                },
+                None => {break;},
+            }
+
+            if self.pendingAckQueue.queue.len() == 0 {
+                break;
+            }
+        }
 
     }
 
@@ -575,27 +777,29 @@ impl ReliableConnection {
         reliableConnection
     }
 
-    pub fn SendPacket(&mut self, data: Vec::<u32>, size: usize) -> bool {
+    /*
+    pub fn SendPacket(&mut self, data: Vec<u32>, size: usize) -> bool {
 
     }
 
-    pub fn ReceivePacket(&mut self, data: Vec::<u32>, size: usize) -> u32 {
+    pub fn ReceivePacket(&mut self, data: Vec<u32>, size: usize) -> u32 {
 
     }
 
     pub fn Update(&self, deltaTime: f32) {
 
     }
+    */
 
     pub fn GetHeaderSize(&self) -> u32 {
-        self.reliable_system.get_header_size() + self.connection.get_header_size()
+        (ReliableSystem::GetHeaderSize() as u32 + Connection::GetHeaderSize() as u32)
     }
 
     pub fn GetReliabilitySystem(&self) -> &ReliableSystem {
         &self.reliable_system
     }
 
-    pub fn SetPacketLossMask(&self, mask: u32) {
+    pub fn SetPacketLossMask(&mut self, mask: u32) {
         self.packet_loss_mask = mask;
     }
 
