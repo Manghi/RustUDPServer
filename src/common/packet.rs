@@ -13,23 +13,12 @@ enum Actor {
 }
 */
 
-#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug, Clone)]
-pub enum PacketDataType {
-        SYNC,
-        INSERTION,
-        CAMERA,
-        // Maybe elaborate: start game, end game,
-        // certain sync types are HP.
-}
-
 #[repr(packed)]
 #[derive(RustcEncodable, RustcDecodable, PartialEq, Clone)]
 pub struct UDPHeader {
-    pub signature: [char; 4],
+    pub signature: u32,
     pub crc32: u32,
     pub client_id: u64,         // hash of username?
-    pub action_type: PacketDataType,
-    pub rsvd: [u8;3],         // for word alignment
     pub sequence_number: u32,
     pub ack_num: u32,
     pub ack_bits: u32,
@@ -76,14 +65,12 @@ impl fmt::Display for UDPHeader {
   Sequence_Number:\t{:?}
   CRC32:\t{:?}
   Client_ID:\t{:?}
-  Action_Type:\t{:?}
   Ack_Num:\t{:?}
   Ack_Bits:\t{:?}",
          self.signature,
          self.sequence_number,
          self.crc32,
          self.client_id,
-         self.action_type,
          self.ack_num,
          self.ack_bits)
     }
@@ -138,12 +125,10 @@ impl Packet {
     pub fn new() -> Packet {
         Packet {
                header: UDPHeader {
-                   signature: ['L', 'I', 'F', 'E'],
+                   signature: 0x4C494645,
                    crc32: 0,
                    client_id: 0,
                    sequence_number: 0,
-                   action_type: PacketDataType::SYNC,
-                   rsvd: [0;3],
                    ack_num: 0,
                    ack_bits: 0
                },
@@ -151,6 +136,14 @@ impl Packet {
                    raw_data: vec![0;MAX_PACKET_SIZE - get_packet_header_size()],
                },
            }
+    }
+
+    pub fn set_signature(&mut self, signature: u32) {
+        self.header.signature = signature;
+    }
+
+    pub fn get_signature(&self) -> u32 {
+        self.header.signature
     }
 
     pub fn set_data(&mut self, data: Vec<u8>) {
@@ -176,7 +169,7 @@ impl Packet {
         self.header.ack_num
     }
 
-    pub fn set_ackbit(&mut self, bit:u8) {
+    pub fn set_ackbit(&mut self, bit:u32) {
         bit_set(&mut self.header.ack_bits, bit)
     }
 
@@ -184,7 +177,7 @@ impl Packet {
         self.header.ack_bits
     }
 
-    pub fn is_ackbit_set(&self, bit:u8) -> u32 {
+    pub fn is_ackbit_set(&self, bit:u32) -> u32 {
         (self.header.ack_bits>>bit) & 1
     }
 
@@ -194,14 +187,6 @@ impl Packet {
 
     pub fn get_client_id(&self) -> u64 {
         self.header.client_id
-    }
-
-    pub fn get_action_type(&self) -> &PacketDataType {
-        &self.header.action_type
-    }
-
-    pub fn set_action_type(&mut self, action: PacketDataType) {
-        self.header.action_type = action;
     }
 
     pub fn set_sequence_number(&mut self, seq_num: u32) {

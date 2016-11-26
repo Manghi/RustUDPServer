@@ -18,6 +18,8 @@ use std::collections::{VecDeque};
 use net2::UdpBuilder;
 use mioco;
 use mio;
+use packet as Packet;
+use bincode;
 
 #[derive(PartialEq)]
 enum State {
@@ -28,6 +30,7 @@ enum State {
     Connected
 }
 
+#[derive(PartialEq)]
 enum Mode {
     None,
     Client,
@@ -90,8 +93,9 @@ impl Socket {
         result_socket
     }
 
-    pub fn receive(&self, data: &mut Vec<u8>) {
+    pub fn receive(&self, data: &mut Vec<u8>)  ->  Result<(usize, net::SocketAddr), &str> {
         let mut buf = [0u8; 1024 * 16];
+        let mut received_bytes = 0;
 
         match self.socket.recv_from(&mut buf) {
             Ok(Some((len, addr))) => {
@@ -99,10 +103,14 @@ impl Socket {
 
                 let buf_as_vec = Vec::from(&buf[0..len]);
                 mem::replace::<(Vec<u8>)>(data, buf_as_vec);
+
+                return Ok((len, addr));
             },
-            Ok(None) => {},
+            Ok(None) => {
+                return Err("Nothing to receive.");
+            },
             Err(_) => {
-                debug!("No data to receive...");
+                return Err("Nothing to receive.");
             }
         }
     }
@@ -111,11 +119,25 @@ impl Socket {
         drop(&self.socket);
     }
 
-    pub fn send(&self, ip: &net::Ipv4Addr, port: u16, data : Vec<u8>) {
+    pub fn send(&self, ip: &net::Ipv4Addr, port: u16, data : Vec<u8>) -> bool {
         let send_addr1 = net::SocketAddrV4::new(*ip, port);
         let send_addr = net::SocketAddr::V4(send_addr1);
 
-        self.socket.send_to(data.as_slice(), &send_addr);
+        match self.socket.send_to(data.as_slice(), &send_addr) {
+            Ok(result) => {
+                match result {
+                    Some(bytes_written) => {
+                        true
+                    },
+                    None => {
+                        false
+                    },
+                }
+            },
+            Err(_) => {
+                false
+            },
+        }
     }
 }
 
@@ -179,7 +201,7 @@ impl PartialOrd  for Address {
 
 
 struct Connection {
-    protocol_id : usize,
+    protocol_id : u32,
     timeout : f32,
     running : bool,
     mode : Mode,
@@ -191,7 +213,7 @@ struct Connection {
 }
 
 impl Connection {
-    pub fn new(protocol_id : usize, timeout : f32, port : u16) -> Connection {
+    pub fn new(protocol_id : u32, timeout : f32, port : u16) -> Connection {
 
         let ip = net::Ipv4Addr::new(0, 0, 0, 0);
         let listen_addr = net::SocketAddrV4::new(ip, port);
@@ -288,6 +310,10 @@ impl Connection {
         &self.mode
     }
 
+    pub fn Get_Protocol_Id(&self) -> u32 {
+        self.protocol_id
+    }
+
     pub fn Update(&mut self, deltaTime: f32) {
         assert!(self.IsRunning(), true);
 
@@ -318,24 +344,37 @@ impl Connection {
             return false;
         }
 
-        let mut packet : Vec<u8> = Vec::with_capacity(size+4);
-        packet[0] = 'L' as u8;
-        packet[1] = 'I' as u8;
-        packet[2] = 'F' as u8;
-        packet[3] = 'E' as u8;
-
-        // TODO: Integrate with my current functional framework
-
-        mem::replace::<(Vec<u8>)>(&mut packet, (data.clone()));
-
-        self.socket.send(&self.address.getAddress(), self.address.getPort(), packet);
-        true
+        self.socket.send(&self.address.getAddress(), self.address.getPort(), data.clone())
     }
 
-    fn ReceivePacket(&self, data: &Vec<u8>, size: usize) {
+    fn ReceivePacket(&self, data: &mut [u8], size: usize) -> usize {
         assert!(self.IsRunning(), true);
-        // TODO
 
+        let mut address : net::IpAddr;
+        let mut buffer : &mut Vec<u8> = Vec::<&mut u8>::new();
+        let mut bytes_received = 0;
+
+         match self.socket.receive(buffer) {
+             Ok((amount, addr)) => {
+                 bytes_received = amount;
+                 address = addr.ip();
+             },
+             Err(_) => {
+                 bytes_received = 0;
+             },
+         }
+
+        if bytes_received <= 4 { // to do define this magic number
+            return 0;
+        }
+
+        // TODO compare protocol_id once we have decoded the stream
+
+        if (self.GetMode() == &Mode::Server) && !self.IsConnected() {
+            println!("Server accepts from client {}", address );
+
+        }
+        1
     }
 
     fn ClearData(&mut self) {
@@ -400,7 +439,7 @@ struct ReliableSystem {
 
 impl ReliableSystem {
     pub fn new( max_sequence : u32) -> ReliableSystem {
-        let mut reliable_system = ReliableSystem {
+        let mut reliability_system = ReliableSystem {
             max_sequence : max_sequence,
             local_sequence : 0,
             remote_sequence : 0,
@@ -422,9 +461,9 @@ impl ReliableSystem {
             receivedQueue : PacketQueue::new(),
             ackedQueue : PacketQueue::new()
         };
-        reliable_system.reset();
+        reliability_system.reset();
 
-        reliable_system
+        reliability_system
     }
 
     pub fn reset(&mut self) {
@@ -660,6 +699,10 @@ impl ReliableSystem {
         }
     }
 
+    // TODO: The UpdateQueues method is not well thought out. My mostly-direct port looks pretty messy.
+    // I'm thinking I can use a macro or something to accomplish it cleaner.
+    // Need to investigate later.
+
     pub fn UpdateQueues(&mut self) {
         let epsilon : f32 = 0.0001;
 
@@ -736,8 +779,28 @@ impl ReliableSystem {
 
     }
 
-    pub fn UpdateStats(&self) {
+    pub fn UpdateStats(&mut self) {
+        let mut sent_bytes_per_second: f32 = 0.0;
 
+        for sent_packet in &self.sentQueue.queue {
+            sent_bytes_per_second += sent_packet.size as f32;
+        }
+
+        let mut acked_packets_per_second = 0;
+        let mut acked_bytes_per_second: f32 = 0.0;
+
+        for acked_packet in &self.ackedQueue.queue {
+            if acked_packet.time >= self.rtt_maximum {
+                acked_packets_per_second += 1;
+                acked_bytes_per_second += acked_packet.size as f32;
+            }
+        }
+
+        sent_bytes_per_second /= self.rtt_maximum;
+        acked_bytes_per_second /= self.rtt_maximum;
+
+        self.sent_bandwidth = sent_bytes_per_second * (8.0/1000.0);
+        self.acked_bandwidth = acked_bytes_per_second * (8.0/1000.0);
     }
 
 
@@ -762,41 +825,93 @@ impl ReliableSystem {
 
 struct ReliableConnection {
     connection : Connection,
-    reliable_system : ReliableSystem,
+    reliability_system : ReliableSystem,
     packet_loss_mask : u32,
 }
 
 impl ReliableConnection {
     pub fn new(protocol_id: u32, timeout: f32, max_sequence : u32, port: u16) -> ReliableConnection {
         let mut reliableConnection = ReliableConnection {
-            connection : Connection::new(protocol_id as usize, timeout, port),
-            reliable_system : ReliableSystem::new(max_sequence),
+            connection : Connection::new(protocol_id, timeout, port),
+            reliability_system : ReliableSystem::new(max_sequence),
             packet_loss_mask : 0,
         };
         reliableConnection.connection.ClearData();
         reliableConnection
     }
 
-    /*
+
     pub fn SendPacket(&mut self, data: Vec<u32>, size: usize) -> bool {
+        let mut packet_to_send = Packet::Packet::new();
 
+        packet_to_send.set_signature(self.connection.Get_Protocol_Id());
+        packet_to_send.set_sequence_number(self.reliability_system.get_local_sequence());
+        packet_to_send.set_ack(self.reliability_system.get_remote_sequence());
+        packet_to_send.set_ackbit(self.reliability_system.GenerateAckBits());
+
+
+        let encoded_packet : Vec<u8>;
+
+        match bincode::rustc_serialize::encode(&packet_to_send, bincode::SizeLimit::Infinite) {
+            Ok(msg) => {
+                encoded_packet = msg;
+            },
+            Err(_) => {
+                panic!("Could not encode packet!");
+            }
+        }
+
+        let successful = self.connection.SendPacket(&encoded_packet, size);
+
+        if !successful {
+            return false;
+        }
+
+        self.reliability_system.PacketSent(size);
+        true
     }
 
-    pub fn ReceivePacket(&mut self, data: Vec<u32>, size: usize) -> u32 {
+    pub fn ReceivePacket(&mut self, data: &mut Vec<u8>, size: usize) -> usize {
+        let mut buffer = [0u8, 1024*16];
+        let header_size = mem::size_of::<Packet::UDPHeader>();
+        let received_bytes = self.connection.ReceivePacket(&mut buffer, size);
 
+        if received_bytes <= 12 {
+            return 0;
+        }
+
+        let decoded_packet: Packet::Packet;
+
+        match bincode::rustc_serialize::decode(&buffer[..]) {
+            Ok(msg) => {
+                decoded_packet = msg;
+            },
+            Err(_) => {
+                panic!("Lets just panic for now...why could we not receieve a packet?");
+            }
+        }
+
+        let data_bytes = received_bytes - header_size;
+
+        self.reliability_system.PacketReceived(decoded_packet.get_sequence_num(), data_bytes);
+        self.reliability_system.ProcessAck(decoded_packet.get_ack(), decoded_packet.get_ackbits());
+
+        mem::replace::<(Vec<u8>)>(&mut data, decoded_packet.get_data().raw_data);
+        data_bytes
     }
 
-    pub fn Update(&self, deltaTime: f32) {
-
+    pub fn Update(&mut self, deltaTime: f32) {
+        self.connection.Update(deltaTime);
+        self.reliability_system.Update(deltaTime);
     }
-    */
+
 
     pub fn GetHeaderSize(&self) -> u32 {
         (ReliableSystem::GetHeaderSize() as u32 + Connection::GetHeaderSize() as u32)
     }
 
     pub fn GetReliabilitySystem(&self) -> &ReliableSystem {
-        &self.reliable_system
+        &self.reliability_system
     }
 
     pub fn SetPacketLossMask(&mut self, mask: u32) {
@@ -804,7 +919,7 @@ impl ReliableConnection {
     }
 
     fn ClearData(&mut self) {
-        self.reliable_system.reset();
+        self.reliability_system.reset();
     }
 }
 
