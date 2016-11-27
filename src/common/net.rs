@@ -350,14 +350,15 @@ impl Connection {
     fn ReceivePacket(&self, data: &mut [u8], size: usize) -> usize {
         assert!(self.IsRunning(), true);
 
-        let mut address : net::IpAddr;
-        let mut buffer : &mut Vec<u8> = Vec::<&mut u8>::new();
+        let mut recv_address : net::IpAddr = net::IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0));
+        let mut buffer = Vec::<u8>::new();
+        let mut databfr = buffer.as_mut();
         let mut bytes_received = 0;
 
-         match self.socket.receive(buffer) {
+         match self.socket.receive(databfr) {
              Ok((amount, addr)) => {
                  bytes_received = amount;
-                 address = addr.ip();
+                 recv_address = addr.ip();
              },
              Err(_) => {
                  bytes_received = 0;
@@ -371,10 +372,10 @@ impl Connection {
         // TODO compare protocol_id once we have decoded the stream
 
         if (self.GetMode() == &Mode::Server) && !self.IsConnected() {
-            println!("Server accepts from client {}", address );
+            println!("Server accepts from client {}", recv_address );
 
         }
-        1
+        1 // JUST TEMP FOR NOW
     }
 
     fn ClearData(&mut self) {
@@ -896,7 +897,7 @@ impl ReliableConnection {
         self.reliability_system.PacketReceived(decoded_packet.get_sequence_num(), data_bytes);
         self.reliability_system.ProcessAck(decoded_packet.get_ack(), decoded_packet.get_ackbits());
 
-        mem::replace::<(Vec<u8>)>(&mut data, decoded_packet.get_data().raw_data);
+        mem::replace::<(Vec<u8>)>(data, decoded_packet.get_data().raw_data.clone());
         data_bytes
     }
 
