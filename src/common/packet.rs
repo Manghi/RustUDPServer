@@ -265,7 +265,7 @@ mod test {
 
         println!("{}", checksum);
 
-        assert_eq!(checksum, 0xA2A7A9FD);
+        assert_eq!(checksum, 0x8EC868F8);
     }
 
     #[test]

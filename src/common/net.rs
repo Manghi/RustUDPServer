@@ -1006,6 +1006,13 @@ struct PacketQueue {
     queue : VecDeque<PacketData>,
 }
 
+impl fmt::Display for PacketQueue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.queue)
+    }
+}
+
+
 impl PacketQueue {
     pub fn new() -> PacketQueue {
         PacketQueue {
@@ -1205,6 +1212,7 @@ impl PacketQueue {
 mod test {
 
     use net;
+    use rand;
 
     #[test]
     fn TestSequenceMoreRecent() {
@@ -1420,6 +1428,84 @@ mod test {
 
 
         packet_queue.verify_sequencing(0xFFFFFFFF ); // assertions within will fail if not sorted
+    }
+
+    #[test]
+    fn TestPacketQueueStressTest()
+    {
+    	const MaximumSequence : u32 = 255;
+
+    	let mut packet_queue = net::PacketQueue::new();
+
+    	// check insert back
+    	for i in  0..100
+    	{
+    		let mut packed_data = net::PacketData {
+                    sequence: i,
+                    size: 3,
+                    time: 3.14
+            };
+
+    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
+    		packet_queue.verify_sequencing( MaximumSequence );
+    	}
+
+    	// check insert front
+    	packet_queue.clear();
+    	for i in 0..100
+    	{
+            let mut packed_data = net::PacketData {
+                    sequence: (100-i),
+                    size: 3,
+                    time: 3.14
+            };
+
+    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
+    		packet_queue.verify_sequencing( MaximumSequence );
+    	}
+
+    	// check insert random
+    	packet_queue.clear();
+    	for i in 0..100
+    	{
+                let mut packed_data = net::PacketData {
+                        sequence: rand::random::<u32>() % MaximumSequence,
+                        size: 3,
+                        time: 3.14
+                };
+
+    		    packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
+    		    packet_queue.verify_sequencing( MaximumSequence );
+    	}
+
+        println!("{}", packet_queue);
+        panic!("Yeah.");
+
+    	// check wrap around
+    	packet_queue.clear();
+    	for i in 200..255
+    	{
+            let mut packed_data = net::PacketData {
+                    sequence: i,
+                    size: 3,
+                    time: 3.14
+            };
+
+
+    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
+    		packet_queue.verify_sequencing( MaximumSequence );
+    	}
+    	for i in 0..50
+    	{
+            let mut packed_data = net::PacketData {
+                    sequence: i,
+                    size: 3,
+                    time: 3.14
+            };
+
+    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
+    		packet_queue.verify_sequencing( MaximumSequence );
+    	}
     }
 }
 

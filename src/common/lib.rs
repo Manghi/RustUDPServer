@@ -7,6 +7,7 @@ extern crate net2;
 extern crate env_logger;
 extern crate crc;
 #[macro_use] extern crate lazy_static;
+extern crate rand;
 
 pub mod debug;
 pub mod communicate;
