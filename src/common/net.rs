@@ -347,10 +347,11 @@ impl Connection {
         self.socket.send(&self.address.getAddress(), self.address.getPort(), data.clone())
     }
 
-    fn ReceivePacket(&self, data: &mut [u8], size: usize) -> usize {
+    fn ReceivePacket(&mut self, data: &mut Vec<u8>, size: usize) -> usize {
         assert!(self.IsRunning(), true);
 
         let mut recv_address : net::IpAddr = net::IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0));
+        let mut recv_port : u16 = 0;
         let mut buffer = Vec::<u8>::new();
         let mut databfr = buffer.as_mut();
         let mut bytes_received = 0;
@@ -359,6 +360,7 @@ impl Connection {
              Ok((amount, addr)) => {
                  bytes_received = amount;
                  recv_address = addr.ip();
+                 recv_port = addr.port();
              },
              Err(_) => {
                  bytes_received = 0;
@@ -369,13 +371,39 @@ impl Connection {
             return 0;
         }
 
-        // TODO compare protocol_id once we have decoded the stream
+        let decoded: Packet::Packet = bincode::rustc_serialize::decode(&databfr[..]).unwrap();
+
+        if decoded.get_signature() != self.Get_Protocol_Id() || recv_port == 0 {
+            return 0;
+        }
+
+        let socket_ip_address = Get_Ipv4Addr_From_IpAddr(recv_address);
 
         if (self.GetMode() == &Mode::Server) && !self.IsConnected() {
-            println!("Server accepts from client {}", recv_address );
+            println!("Server accepts from client {}:{}", recv_address, recv_port );
+            self.state = State::Connected;
+
+            self.address = Address::new(socket_ip_address, recv_port);
+            self.OnConnect();
 
         }
-        1 // JUST TEMP FOR NOW
+
+        // Double check this condition.
+        if self.address.getAddress() == socket_ip_address {
+            if (self.mode == Mode::Client) && (self.state == State::Connecting) {
+                println!("Client completed connection with server.");
+                self.state == State::Connected;
+            }
+
+            self.timeout_accumulator = 0.0;
+
+            let immutable_bfr = databfr.clone();
+            mem::replace::<(Vec<u8>)>(data, immutable_bfr);
+
+            return bytes_received;
+        }
+
+        return 0;
     }
 
     fn ClearData(&mut self) {
@@ -873,9 +901,11 @@ impl ReliableConnection {
     }
 
     pub fn ReceivePacket(&mut self, data: &mut Vec<u8>, size: usize) -> usize {
-        let mut buffer = [0u8, 1024*16];
+        let mut buffer = Vec::<u8>::new();
         let header_size = mem::size_of::<Packet::UDPHeader>();
         let received_bytes = self.connection.ReceivePacket(&mut buffer, size);
+
+        let buffer_arr = buffer.as_slice();
 
         if received_bytes <= 12 {
             return 0;
@@ -883,7 +913,8 @@ impl ReliableConnection {
 
         let decoded_packet: Packet::Packet;
 
-        match bincode::rustc_serialize::decode(&buffer[..]) {
+        // TODO : Move this into a 'Packet' interpreter from [u8] to Packet
+        match bincode::rustc_serialize::decode(&buffer_arr[..]) {
             Ok(msg) => {
                 decoded_packet = msg;
             },
@@ -1390,4 +1421,19 @@ mod test {
 
         packet_queue.verify_sequencing(0xFFFFFFFF ); // assertions within will fail if not sorted
     }
+}
+
+fn Get_Ipv4Addr_From_IpAddr(ip_addr : net::IpAddr) -> net::Ipv4Addr {
+    // TODO: this definitely can be written better
+    let ipv4_str = format!("{}", ip_addr);
+    let ipv4_vals : Vec<u8> = ipv4_str
+        .split('.')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse().unwrap())
+        .collect();
+
+        assert_eq!(ipv4_vals.len(), 4);
+
+    let sender_ipv4_addr = net::Ipv4Addr::new(ipv4_vals[0],ipv4_vals[1], ipv4_vals[2], ipv4_vals[3]);
+    sender_ipv4_addr.clone()
 }
