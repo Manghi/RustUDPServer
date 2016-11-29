@@ -412,7 +412,7 @@ impl Connection {
         self.address = Address::new(Address::empty_address().clone(), 0);
     }
 
-    // TODO
+    // Up to user if they want to fill this in. Idea is to leave infrastructure alone.
     fn OnStart(&mut self) {
 
     }
@@ -729,7 +729,7 @@ impl ReliableSystem {
     }
 
     // TODO: The UpdateQueues method is not well thought out. My mostly-direct port looks pretty messy.
-    // I'm thinking I can use a macro or something to accomplish it cleaner.
+    // I'm thinking I can use a macro for the loop blocks.
     // Need to investigate later.
 
     pub fn UpdateQueues(&mut self) {
@@ -1471,18 +1471,14 @@ mod test {
     }
 
     #[test]
-    fn TestPacketQueueStressTest()
-    {
+    fn TestPacketQueueStressTest_InsertBack() {
     	const MaximumSequence : u32 = 0xFFFF;
 
     	let mut packet_queue = net::PacketQueue::new();
 
-        println!("---------------\nPacket Queue Stress Test\n---------------");
-
     	// check insert back
     	println!("---------------\nInsert Back\n---------------");
-    	for i in  0..100
-    	{
+    	for i in  0..100 {
     		let mut packed_data = net::PacketData {
                     sequence: i,
                     size: 3,
@@ -1492,12 +1488,18 @@ mod test {
     		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
     		packet_queue.verify_sequencing( MaximumSequence );
     	}
+    }
+
+    #[test]
+    fn TestPacketQueueStressTest_InsertFront() {
+        const MaximumSequence : u32 = 0xFFFF;
+
+    	let mut packet_queue = net::PacketQueue::new();
 
     	// check insert front
     	println!("---------------\nInsert Front\n---------------");
     	packet_queue.clear();
-    	for i in 0..100
-    	{
+    	for i in 0..100 {
             let mut packed_data = net::PacketData {
                     sequence: (100-i),
                     size: 3,
@@ -1507,12 +1509,17 @@ mod test {
     		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
     		packet_queue.verify_sequencing( MaximumSequence );
     	}
+    }
 
+    #[test]
+    fn TestPacketQueueStressTest_InsertRandom() {
+        const MaximumSequence : u32 = 0xFFFF;
+
+    	let mut packet_queue = net::PacketQueue::new();
     	// check insert random
     	println!("\n---------------\nInsert Random\n---------------");
     	packet_queue.clear();
-    	for i in 0..100
-    	{
+    	for i in 0..100  {
                 let mut packed_data = net::PacketData {
                         sequence: rand::random::<u32>() % MaximumSequence,
                         size: 3,
@@ -1524,12 +1531,18 @@ mod test {
     		    packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
     		    packet_queue.verify_sequencing( MaximumSequence );
     	}
+    }
 
-    	// check wrap around
+    #[test]
+    fn TestPacketQueueStressTest_Wrap() {
+        const MaximumSequence : u32 = 0xFFFF;
+
+    	let mut packet_queue = net::PacketQueue::new();
+
+        // check wrap around
     	println!("---------------\nWrap Around\n---------------");
-    	packet_queue.clear();
-    	for i in 200..255
-    	{
+
+    	for i in 200..255 {
             let mut packed_data = net::PacketData {
                     sequence: i,
                     size: 3,
@@ -1540,8 +1553,8 @@ mod test {
     		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
     		packet_queue.verify_sequencing( MaximumSequence );
     	}
-    	for i in 0..50
-    	{
+
+    	for i in 0..50 {
             let mut packed_data = net::PacketData {
                     sequence: i,
                     size: 3,
