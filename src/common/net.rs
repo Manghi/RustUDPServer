@@ -1233,7 +1233,18 @@ impl PacketQueue {
 
 }
 
-
+//================================================================================================
+//
+//                                      Net.rs Unit Tests
+//
+//  All tests should fall into this module. Eventually this will be migrated into a common "tests/"
+//  folder with all of the other tests.
+//
+//  The goal of this is to test each object defined above and their functionality.
+//
+//  Any bugs found within this code and are not covered by an existing test will need their own.
+//
+//================================================================================================
 
 
 
