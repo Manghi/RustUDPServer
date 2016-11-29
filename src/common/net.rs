@@ -999,9 +999,6 @@ pub fn sequence_more_recent( s1: &u32, s2: &u32, max_sequence: &u32 ) -> bool
     ( s2 > s1 ) && ( s2 - s1 >  max_sequence/2 )
 }
 
-const MIN_QUEUE_SIZE: usize = 0;
-const MAX_QUEUE_SIZE: usize = 0x20;
-
 struct PacketQueue {
     queue : VecDeque<PacketData>,
 }
@@ -1044,13 +1041,23 @@ impl PacketQueue {
     pub fn insert_sorted(&mut self, packet_data: PacketData, max_sequence: u32)
     {
         if self.queue.is_empty() {
-            self.push_back(packet_data)
+
+            if cfg!(test) {
+                println!("INS_EMPTY: {}", packet_data.sequence);
+            }
+
+            self.push_back(packet_data);
         }
         else {
 
             match self.front() {
                 Some(front) => {
                     if !sequence_more_recent(&packet_data.sequence, &front.sequence, &max_sequence ) {
+
+                        if cfg!(test) {
+                            println!("INS_FRONT: {}, before {}", packet_data.sequence, front.sequence);
+                        }
+
                         self.push_front(packet_data.clone());
                         return;
                     }
@@ -1061,6 +1068,11 @@ impl PacketQueue {
             match self.back() {
                 Some(last) => {
                     if sequence_more_recent(&packet_data.sequence, &last.sequence, &max_sequence ) {
+
+                        if cfg!(test) {
+                            println!("INS_BACK: {}, after {}", packet_data.sequence, last.sequence);
+                        }
+
                         self.push_back(packet_data.clone());
                         return;
                     }
@@ -1070,7 +1082,7 @@ impl PacketQueue {
 
             let insertion_index = self.find_sequence_insertion_point(packet_data.sequence, max_sequence);
 
-            if insertion_index != 0xFF && self.is_index_valid(insertion_index) {
+            if insertion_index != (max_sequence as usize) && self.is_index_valid(insertion_index) {
                 // Check that we are not inserting a packet which is already present
                 match self.get_packet(insertion_index) {
                     Some(packet_at_index) => {
@@ -1081,7 +1093,15 @@ impl PacketQueue {
                     }
                 }
 
+                if cfg!(test) {
+                    println!("INS_SORT: {} @ index {}", packet_data.sequence, insertion_index);
+                }
                 self.queue.insert(insertion_index, packet_data.clone());
+            }
+            else {
+                if cfg!(test) {
+                    println!("Not inserted... this should panic :: {}", packet_data.sequence);
+                }
             }
         }
     }
@@ -1145,6 +1165,9 @@ impl PacketQueue {
 
 
     pub fn is_index_valid(&self, index: usize) -> bool {
+        const MIN_QUEUE_SIZE: usize = 0x0;
+        const MAX_QUEUE_SIZE: usize = 0xFFFF;
+
         index > MIN_QUEUE_SIZE && index < MAX_QUEUE_SIZE
     }
 
@@ -1156,7 +1179,9 @@ impl PacketQueue {
             loop {
                 match iterator.next() {
                     Some((index, nextPacketData)) => {
-                        println!("INS_IDX:nextPacketData.sequence={}, sequence_num={}", nextPacketData.sequence, sequence_num);
+                        if cfg!(test) {
+                            println!("INS_IDX:nextPacketData.sequence={}, sequence_num={}", nextPacketData.sequence, sequence_num);
+                        }
 
                         if sequence_more_recent(&nextPacketData.sequence, &sequence_num, &max_sequence) {
                             insertion_index = index;
@@ -1164,7 +1189,9 @@ impl PacketQueue {
                         }
                     },
                     None => {
-                        println!("End of list. Insertion Index: {}", insertion_index);
+                        if cfg!(test) {
+                            println!("End of list. Insertion Index: {}", insertion_index);
+                        }
                         break;
                     },
                 }
@@ -1181,7 +1208,9 @@ impl PacketQueue {
             loop {
                 match iterator.next() {
                     Some((index, nextPacketData)) => {
-                        println!("GET_IDX:nextPacketData.sequence={}, sequence_num={}", nextPacketData.sequence, sequence_num);
+                        if cfg!(test) {
+                            println!("GET_IDX:nextPacketData.sequence={}, sequence_num={}", nextPacketData.sequence, sequence_num);
+                        }
 
                         if nextPacketData.sequence == sequence_num {
                             packet_index = index;
@@ -1433,11 +1462,14 @@ mod test {
     #[test]
     fn TestPacketQueueStressTest()
     {
-    	const MaximumSequence : u32 = 255;
+    	const MaximumSequence : u32 = 0xFFFF;
 
     	let mut packet_queue = net::PacketQueue::new();
 
+        println!("---------------\nPacket Queue Stress Test\n---------------");
+
     	// check insert back
+    	println!("---------------\nInsert Back\n---------------");
     	for i in  0..100
     	{
     		let mut packed_data = net::PacketData {
@@ -1451,6 +1483,7 @@ mod test {
     	}
 
     	// check insert front
+    	println!("---------------\nInsert Front\n---------------");
     	packet_queue.clear();
     	for i in 0..100
     	{
@@ -1465,6 +1498,7 @@ mod test {
     	}
 
     	// check insert random
+    	println!("\n---------------\nInsert Random\n---------------");
     	packet_queue.clear();
     	for i in 0..100
     	{
@@ -1474,14 +1508,14 @@ mod test {
                         time: 3.14
                 };
 
+                // We are not discriminating against duplicates. This is to test
+                // that we can insert with consecutively random sequences.
     		    packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
     		    packet_queue.verify_sequencing( MaximumSequence );
     	}
 
-        println!("{}", packet_queue);
-        panic!("Yeah.");
-
     	// check wrap around
+    	println!("---------------\nWrap Around\n---------------");
     	packet_queue.clear();
     	for i in 200..255
     	{
