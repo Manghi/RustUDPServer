@@ -42,6 +42,15 @@ enum Port {
     Server = 8890,
 }
 
+
+///     #####
+///    #     #  ####   ####  #    # ###### #####
+///    #       #    # #    # #   #  #        #
+///     #####  #    # #      ####   #####    #
+///          # #    # #      #  #   #        #
+///    #     # #    # #    # #   #  #        #
+///     #####   ####   ####  #    # ######   #
+
 struct Socket {
     socket: mio::udp::UdpSocket,
     is_open: bool,
@@ -141,6 +150,14 @@ impl Socket {
     }
 }
 
+///       #
+///      # #   #####  #####  #####  ######  ####   ####
+///     #   #  #    # #    # #    # #      #      #
+///    #     # #    # #    # #    # #####   ####   ####
+///    ####### #    # #    # #####  #           #      #
+///    #     # #    # #    # #   #  #      #    # #    #
+///    #     # #####  #####  #    # ######  ####   ####
+
 #[derive(Clone)]
 struct Address {
     address : net::Ipv4Addr,
@@ -198,6 +215,15 @@ impl PartialOrd  for Address {
         self.address >= other.address
     }
 }
+
+
+///    #####
+///    #     #  ####  #    # #    # ######  ####  ##### #  ####  #    #
+///    #       #    # ##   # ##   # #      #    #   #   # #    # ##   #
+///    #       #    # # #  # # #  # #####  #        #   # #    # # #  #
+///    #       #    # #  # # #  # # #      #        #   # #    # #  # #
+///    #     # #    # #   ## #   ## #      #    #   #   # #    # #   ##
+///    #####   ####  #    # #    # ######  ####    #   #  ####  #    #
 
 
 struct Connection {
@@ -436,7 +462,13 @@ impl Connection {
 
 
 
-
+///     ######                                                           #####
+///     #     # ###### #      #   ##   #####  # #      # ##### #   #    #     # #   #  ####  ##### ###### #    #
+///     #     # #      #      #  #  #  #    # # #      #   #    # #     #        # #  #        #   #      ##  ##
+///     ######  #####  #      # #    # #####  # #      #   #     #       #####    #    ####    #   #####  # ## #
+///     #   #   #      #      # ###### #    # # #      #   #     #            #   #        #   #   #      #    #
+///     #    #  #      #      # #    # #    # # #      #   #     #      #     #   #   #    #   #   #      #    #
+///     #     # ###### ###### # #    # #####  # ###### #   #     #       #####    #    ####    #   ###### #    #
 
 
 
@@ -842,7 +874,13 @@ impl ReliableSystem {
 
 
 
-
+///     ######                                                  #####
+///     #     # ###### #      #   ##   #####  #      ######    #     #  ####  #    # #    # ######  ####  ##### #  ####  #    #
+///     #     # #      #      #  #  #  #    # #      #         #       #    # ##   # ##   # #      #    #   #   # #    # ##   #
+///     ######  #####  #      # #    # #####  #      #####     #       #    # # #  # # #  # #####  #        #   # #    # # #  #
+///     #   #   #      #      # ###### #    # #      #         #       #    # #  # # #  # # #      #        #   # #    # #  # #
+///     #    #  #      #      # #    # #    # #      #         #     # #    # #   ## #   ## #      #    #   #   # #    # #   ##
+///     #     # ###### ###### # #    # #####  ###### ######     #####   ####  #    # #    # ######  ####    #   #  ####  #    #
 
 
 
@@ -961,7 +999,13 @@ impl ReliableConnection {
 
 
 
-
+///    ######                                        #####
+///    #     #   ##    ####  #    # ###### #####    #     # #    # ###### #    # ######
+///    #     #  #  #  #    # #   #  #        #      #     # #    # #      #    # #
+///    ######  #    # #      ####   #####    #      #     # #    # #####  #    # #####
+///    #       ###### #      #  #   #        #      #   # # #    # #      #    # #
+///    #       #    # #    # #   #  #        #      #    #  #    # #      #    # #
+///    #       #    #  ####  #    # ######   #       #### #  ####  ######  ####  ######
 
 
 
@@ -1231,6 +1275,10 @@ impl PacketQueue {
         self.queue.clear();
     }
 
+    pub fn size(&self) -> usize {
+        self.queue.len()
+    }
+
 }
 
 //================================================================================================
@@ -1292,15 +1340,15 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFFFFFF  as u32;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFFFFFF;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
         assert_eq!(packet_queue.exists(100), true);
@@ -1311,7 +1359,7 @@ mod test {
         println!("{:?}", packet_queue.queue);
 
         packet_data.sequence = 99;
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
 
         assert_eq!(packet_queue.exists(99), true);
         let index = packet_queue.find_index_for_sequence(99);
@@ -1329,15 +1377,15 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFFFFFF  as u32;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFFFFFF;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
         assert_eq!(packet_queue.exists(100), true);
@@ -1346,7 +1394,7 @@ mod test {
         assert_eq!(packet_queue.exists(103), false);
 
         packet_data.sequence = 103;
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
 
         assert_eq!(packet_queue.exists(103), true);
         let index = packet_queue.find_index_for_sequence(103);
@@ -1361,15 +1409,15 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFFFFFF  as u32;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFFFFFF;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 2;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
 
         assert_eq!(packet_queue.exists(100), true);
         assert_eq!(packet_queue.exists(101), true);
@@ -1377,7 +1425,7 @@ mod test {
         assert_eq!(packet_queue.exists(102), false);
 
         packet_data.sequence = 102;
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
 
         assert_eq!(packet_queue.exists(102), true);
         let index = packet_queue.find_index_for_sequence(102);
@@ -1392,15 +1440,15 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFFFFFF  as u32;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFFFFFF;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 2;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
 
         assert_eq!(packet_queue.exists(100), true);
         assert_eq!(packet_queue.exists(101), true);
@@ -1422,15 +1470,15 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFFFFFF  as u32;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFFFFFF;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 1;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
         packet_data.sequence += 2;
 
-        packet_queue.insert_sorted(packet_data.clone(), max_sequence);
+        packet_queue.insert_sorted(packet_data.clone(), MAXIMUM_SEQUENCE);
 
         assert_eq!(packet_queue.exists(100), true);
         assert_eq!(packet_queue.exists(101), true);
@@ -1449,13 +1497,13 @@ mod test {
                 size: 100,
                 time: 4.17,
         };
-        let max_sequence = 0xFFFFFFFF  as u32;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFFFFFF;
 
         packet_queue.push_front(packet_data.clone());
         packet_data.sequence -= 1;
 
         packet_queue.push_front(packet_data.clone());
-        packet_data.sequence += 0xFFFFFFFF ;
+        packet_data.sequence += MAXIMUM_SEQUENCE ;
 
         packet_queue.push_front(packet_data.clone());
 
@@ -1467,12 +1515,12 @@ mod test {
         println!("{:?}", packet_queue.queue);
 
 
-        packet_queue.verify_sequencing(0xFFFFFFFF ); // assertions within will fail if not sorted
+        packet_queue.verify_sequencing(MAXIMUM_SEQUENCE); // assertions within will fail if not sorted
     }
 
     #[test]
     fn TestPacketQueueStressTest_InsertBack() {
-    	const MaximumSequence : u32 = 0xFFFF;
+    	const MAXIMUM_SEQUENCE : u32 = 0xFFFF;
 
     	let mut packet_queue = net::PacketQueue::new();
 
@@ -1485,14 +1533,14 @@ mod test {
                     time: 3.14
             };
 
-    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
-    		packet_queue.verify_sequencing( MaximumSequence );
+    		packet_queue.insert_sorted( packed_data.clone(), MAXIMUM_SEQUENCE );
+    		packet_queue.verify_sequencing( MAXIMUM_SEQUENCE );
     	}
     }
 
     #[test]
     fn TestPacketQueueStressTest_InsertFront() {
-        const MaximumSequence : u32 = 0xFFFF;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFF;
 
     	let mut packet_queue = net::PacketQueue::new();
 
@@ -1506,14 +1554,14 @@ mod test {
                     time: 3.14
             };
 
-    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
-    		packet_queue.verify_sequencing( MaximumSequence );
+    		packet_queue.insert_sorted( packed_data.clone(), MAXIMUM_SEQUENCE );
+    		packet_queue.verify_sequencing( MAXIMUM_SEQUENCE );
     	}
     }
 
     #[test]
     fn TestPacketQueueStressTest_InsertRandom() {
-        const MaximumSequence : u32 = 0xFFFF;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFF;
 
     	let mut packet_queue = net::PacketQueue::new();
     	// check insert random
@@ -1521,21 +1569,21 @@ mod test {
     	packet_queue.clear();
     	for i in 0..100  {
                 let mut packed_data = net::PacketData {
-                        sequence: rand::random::<u32>() % MaximumSequence,
+                        sequence: rand::random::<u32>() % MAXIMUM_SEQUENCE,
                         size: 3,
                         time: 3.14
                 };
 
                 // We are not discriminating against duplicates. This is to test
                 // that we can insert with consecutively random sequences.
-    		    packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
-    		    packet_queue.verify_sequencing( MaximumSequence );
+    		    packet_queue.insert_sorted( packed_data.clone(), MAXIMUM_SEQUENCE );
+    		    packet_queue.verify_sequencing( MAXIMUM_SEQUENCE );
     	}
     }
 
     #[test]
     fn TestPacketQueueStressTest_Wrap() {
-        const MaximumSequence : u32 = 0xFFFF;
+        const MAXIMUM_SEQUENCE : u32 = 0xFFFF;
 
     	let mut packet_queue = net::PacketQueue::new();
 
@@ -1550,8 +1598,8 @@ mod test {
             };
 
 
-    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
-    		packet_queue.verify_sequencing( MaximumSequence );
+    		packet_queue.insert_sorted( packed_data.clone(), MAXIMUM_SEQUENCE );
+    		packet_queue.verify_sequencing( MAXIMUM_SEQUENCE );
     	}
 
     	for i in 0..50 {
@@ -1561,9 +1609,86 @@ mod test {
                     time: 3.14
             };
 
-    		packet_queue.insert_sorted( packed_data.clone(), MaximumSequence );
-    		packet_queue.verify_sequencing( MaximumSequence );
+    		packet_queue.insert_sorted( packed_data.clone(), MAXIMUM_SEQUENCE );
+    		packet_queue.verify_sequencing( MAXIMUM_SEQUENCE );
     	}
+    }
+
+    #[test]
+    fn TestReliabilitySystem_CheckBitIndexForSequence() {
+        println!("---------------Check Bit Index for Sequence---------------");
+
+        const MAXIMUM_SEQUENCE : u32 = 0xFF;
+
+        let reliability_system = net::ReliableSystem::new(MAXIMUM_SEQUENCE);
+
+
+        assert_eq!( reliability_system.bit_index_for_sequence( 99, 100, MAXIMUM_SEQUENCE ), 0 );
+        assert_eq!( reliability_system.bit_index_for_sequence( 90, 100, MAXIMUM_SEQUENCE ), 9 );
+        assert_eq!( reliability_system.bit_index_for_sequence( 0, 1, MAXIMUM_SEQUENCE ), 0 );
+        assert_eq!( reliability_system.bit_index_for_sequence( 255, 0, MAXIMUM_SEQUENCE ), 0 );
+        assert_eq!( reliability_system.bit_index_for_sequence( 255, 1, MAXIMUM_SEQUENCE ), 1 );
+        assert_eq!( reliability_system.bit_index_for_sequence( 254, 1, MAXIMUM_SEQUENCE ), 2 );
+        assert_eq!( reliability_system.bit_index_for_sequence( 254, 2, MAXIMUM_SEQUENCE ), 3 );
+
+    }
+
+    #[test]
+    fn TestReliabilitySystem_CheckGenerateAckBit() {
+        println!("---------------Check Generate Ack Bit---------------");
+
+        const MAXIMUM_SEQUENCE : u32 = 0xFF;
+
+        let mut packet_queue = net::PacketQueue::new();
+        let reliability_system = net::ReliableSystem::new(MAXIMUM_SEQUENCE);
+
+        for i in 0..32 {
+            let mut packed_data = net::PacketData {
+                    sequence: i,
+                    size: 3,
+                    time: 3.14
+            };
+
+            packet_queue.insert_sorted( packed_data.clone(), MAXIMUM_SEQUENCE );
+            packet_queue.verify_sequencing( MAXIMUM_SEQUENCE );
+        }
+
+        assert_eq!( packet_queue.size(), 32 );
+        assert_eq!( reliability_system.generate_ack_bits( 32, &packet_queue, MAXIMUM_SEQUENCE ), 0xFFFFFFFF );
+        assert_eq!( reliability_system.generate_ack_bits( 31, &packet_queue, MAXIMUM_SEQUENCE ), 0x7FFFFFFF );
+        assert_eq!( reliability_system.generate_ack_bits( 33, &packet_queue, MAXIMUM_SEQUENCE ), 0xFFFFFFFE );
+        assert_eq!( reliability_system.generate_ack_bits( 16, &packet_queue, MAXIMUM_SEQUENCE ), 0x0000FFFF );
+        assert_eq!( reliability_system.generate_ack_bits( 48, &packet_queue, MAXIMUM_SEQUENCE ), 0xFFFF0000 );
+
+    }
+
+    #[test]
+    fn TestReliabilitySystem_CheckGenerateAckBitWithWrap() {
+        println!("---------------Check Generate Ack Bit---------------");
+
+        const MAXIMUM_SEQUENCE : u32 = 0xFF;
+
+        let mut packet_queue = net::PacketQueue::new();
+        let reliability_system = net::ReliableSystem::new(MAXIMUM_SEQUENCE);
+
+        for i in 224..256 {
+            let mut packed_data = net::PacketData {
+                    sequence: i,
+                    size: 3,
+                    time: 3.14
+            };
+
+            packet_queue.insert_sorted( packed_data.clone(), MAXIMUM_SEQUENCE );
+            packet_queue.verify_sequencing( MAXIMUM_SEQUENCE );
+        }
+
+        assert_eq!( packet_queue.size(), 32 );
+        assert_eq!( reliability_system.generate_ack_bits( 0, &packet_queue, MAXIMUM_SEQUENCE ), 0xFFFFFFFF );
+        assert_eq!( reliability_system.generate_ack_bits( 255, &packet_queue, MAXIMUM_SEQUENCE ), 0x7FFFFFFF );
+        assert_eq!( reliability_system.generate_ack_bits( 1, &packet_queue, MAXIMUM_SEQUENCE ), 0xFFFFFFFE );
+        assert_eq!( reliability_system.generate_ack_bits( 240, &packet_queue, MAXIMUM_SEQUENCE ), 0x0000FFFF );
+        assert_eq!( reliability_system.generate_ack_bits( 16, &packet_queue, MAXIMUM_SEQUENCE ), 0xFFFF0000 );
+
     }
 }
 
