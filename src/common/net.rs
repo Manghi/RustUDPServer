@@ -403,7 +403,16 @@ impl Connection {
             return 0;
         }
 
-        let socket_ip_address = Get_Ipv4Addr_From_IpAddr(recv_address);
+        let socket_ip_address;
+
+        match recv_address {
+            net::IpAddr::V4(v4address) => {
+                socket_ip_address = v4address;
+            },
+            _ => {
+                panic!("I do not understand this type of addressing.");
+            }
+        }
 
         if (self.GetMode() == &Mode::Server) && !self.IsConnected() {
             println!("Server accepts from client {}:{}", recv_address, recv_port );
@@ -1690,19 +1699,4 @@ mod test {
         assert_eq!( reliability_system.generate_ack_bits( 16, &packet_queue, MAXIMUM_SEQUENCE ), 0xFFFF0000 );
 
     }
-}
-
-fn Get_Ipv4Addr_From_IpAddr(ip_addr : net::IpAddr) -> net::Ipv4Addr {
-    // TODO: this definitely can be written better
-    let ipv4_str = format!("{}", ip_addr);
-    let ipv4_vals : Vec<u8> = ipv4_str
-        .split('.')
-        .filter(|s| !s.is_empty())
-        .map(|s| s.parse().unwrap())
-        .collect();
-
-        assert_eq!(ipv4_vals.len(), 4);
-
-    let sender_ipv4_addr = net::Ipv4Addr::new(ipv4_vals[0],ipv4_vals[1], ipv4_vals[2], ipv4_vals[3]);
-    sender_ipv4_addr.clone()
 }
