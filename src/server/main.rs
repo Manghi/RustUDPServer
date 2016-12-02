@@ -11,6 +11,7 @@ use mioco::udp::{UdpSocket};
 use mioco::mio::Ipv4Addr;
 use common::packet::*;
 use common::communicate;
+use common::net as mynet;
 
 static mut packet_counter : u16 = 0;
 
@@ -71,20 +72,24 @@ fn listen_on_port(port: u16){
 }
 
 fn main() {
+    use std::time::Duration;
+    use std::thread;
 
-    match env_logger::init() {
-        Ok(_) => {
-            info!("Environment logger started...");
-        }
-        Err(_) => {
-            debug!("Shits fucked up yo.");
-            return;
-        }
+    let mut reliable_connection = mynet::ReliableConnection::new(0x4C494645, 6000000.0, 0xFFFFFFFF, mynet::Port::Server as u16);
+
+    //reliable_connection.connection.address = net::Address::new( std::net::Ipv4Addr::new(127, 0, 0, 1) , net::Port::Client as u16);
+
+    loop {
+        let mut buffer = Vec::<u8>::with_capacity(100);
+    //    for n in 0..100 {
+//
+//            buffer.insert(n, n as u8)
+//        }
+
+        let amount = reliable_connection.ReceivePacket(&mut buffer, 100*8);
+
+        println!("Data received:\n{}\n{:?}\n\n", amount, buffer);
+
+        thread::sleep(Duration::from_millis(1000));
     }
-
-    mioco::start(move || {
-        println!("Starting udp echo server on port: {}", communicate::get_port_server());
-        listen_on_port(communicate::get_port_server());
-    }).unwrap();
-
 }

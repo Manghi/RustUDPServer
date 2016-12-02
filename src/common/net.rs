@@ -31,13 +31,13 @@ enum State {
 }
 
 #[derive(PartialEq)]
-enum Mode {
+pub enum Mode {
     None,
     Client,
     Server
 }
 
-enum Port {
+pub enum Port {
     Client = 8888,
     Server = 8890,
 }
@@ -159,7 +159,7 @@ impl Socket {
 ///    #     # #####  #####  #    # ######  ####   ####
 
 #[derive(Clone)]
-struct Address {
+pub struct Address {
     address : net::Ipv4Addr,
     port : u16
 }
@@ -226,7 +226,7 @@ impl PartialOrd  for Address {
 ///    #####   ####  #    # #    # ######  ####    #   #  ####  #    #
 
 
-struct Connection {
+pub struct Connection {
     protocol_id : u32,
     timeout : f32,
     running : bool,
@@ -257,6 +257,10 @@ impl Connection {
 
         new_connection.ClearData();
         new_connection
+    }
+
+    pub fn SetAddress(&mut self, addr: Address) {
+        self.address = addr;
     }
 
     pub fn Start(&mut self) -> bool {
@@ -484,7 +488,7 @@ impl Connection {
 
 
 
-struct ReliableSystem {
+pub struct ReliableSystem {
     max_sequence : u32,
     local_sequence : u32,
     remote_sequence : u32,
@@ -899,7 +903,7 @@ impl ReliableSystem {
 
 
 
-struct ReliableConnection {
+pub struct ReliableConnection {
     connection : Connection,
     reliability_system : ReliableSystem,
     packet_loss_mask : u32,
@@ -999,6 +1003,10 @@ impl ReliableConnection {
 
     fn ClearData(&mut self) {
         self.reliability_system.reset();
+    }
+
+    pub fn SetDestination(&mut self, addr: Address) {
+        self.connection.SetAddress(addr);
     }
 }
 

@@ -16,6 +16,7 @@ use std::{str};
 use common::communicate::*;
 use common::packet::{Packet, MyLen};
 use common::netbuffers::{ get_network_buffer_manager};
+use common::net as mynet;
 
 #[derive(PartialEq)]
 enum MessageType {
@@ -287,7 +288,7 @@ fn main() {
             return;
         }
     }
-
+/*
     let (tx_user_input, rx_user_input) = mioco::sync::mpsc::sync_channel::<ThreadMessage>(5);
     let (tx_net_buff_handler, rx_net_buff_handler) = mioco::sync::mpsc::sync_channel::<ThreadMessage>(5);
     let (tx_exit_thread, rx_exit_thread) = mioco::sync::mpsc::sync_channel::<MessageType>(5);
@@ -318,7 +319,7 @@ fn main() {
                             if  message.action == MessageType::SEND
                              || message.action == MessageType::INSERT
                              || message.action == MessageType::REMOVE {
-                                 
+
                                 let _ = tx_net_buff_handler.send(message);
 
                             }
@@ -334,6 +335,29 @@ fn main() {
             );
         }
     }).unwrap(); // It's alright if this code panics.
+*/
+use std::time::Duration;
+use std::thread;
+
+let mut reliable_connection = mynet::ReliableConnection::new(0x4C494645, 6000000.0, 0xFFFFFFFF, mynet::Port::Client as u16);
+
+reliable_connection.SetDestination(mynet::Address::new( net::Ipv4Addr::new(127, 0, 0, 1) , mynet::Port::Server as u16));
+
+loop {
+    let mut buffer = Vec::<u32>::with_capacity(100);
+    for n in 0..100 {
+
+        buffer.insert(n, n as u32)
+    }
+
+    let packet_sent = reliable_connection.SendPacket(buffer, 100*8);
+
+    if !packet_sent {
+        panic!("I couldn't send the packet :()");
+    }
+
+    thread::sleep(Duration::from_millis(1000));
+}
 
     println!("Exiting client..");
 }
