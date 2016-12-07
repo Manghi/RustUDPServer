@@ -336,28 +336,34 @@ fn main() {
         }
     }).unwrap(); // It's alright if this code panics.
 */
-use std::time::Duration;
-use std::thread;
+    use std::time::Duration;
+    use std::thread;
 
-let mut reliable_connection = mynet::ReliableConnection::new(0x4C494645, 6000000.0, 0xFFFFFFFF, mynet::Port::Client as u16);
+    let mut reliable_connection = mynet::ReliableConnection::new(0x4C494645, 6000000.0, 0xFFFFFFFF, mynet::Port::Client as u16);
 
-reliable_connection.SetDestination(mynet::Address::new( net::Ipv4Addr::new(127, 0, 0, 1) , mynet::Port::Server as u16));
+    reliable_connection.SetDestination(mynet::Address::new( net::Ipv4Addr::new(127, 0, 0, 1) , mynet::Port::Server as u16));
 
-loop {
-    let mut buffer = Vec::<u32>::with_capacity(100);
-    for n in 0..100 {
-
-        buffer.insert(n, n as u32)
+    if !reliable_connection.Start() {
+        panic!("Error: Could not start reliable connection.")
     }
 
-    let packet_sent = reliable_connection.SendPacket(buffer, 100*8);
+    reliable_connection.Connection();
 
-    if !packet_sent {
-        panic!("I couldn't send the packet :()");
+    loop {
+        let mut buffer = Vec::<u32>::new();
+        for n in 0..100 {
+
+            buffer.push(n);
+        }
+
+        let packet_sent = reliable_connection.SendPacket(buffer, 100*8);
+
+        if !packet_sent {
+            panic!("I couldn't send the packet :()");
+        }
+
+        thread::sleep(Duration::from_millis(1000));
     }
-
-    thread::sleep(Duration::from_millis(1000));
-}
 
     println!("Exiting client..");
 }

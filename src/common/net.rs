@@ -263,6 +263,10 @@ impl Connection {
         self.address = addr;
     }
 
+    pub fn GetAddress(&self) -> Address {
+        self.address.clone()
+    }
+
     pub fn Start(&mut self) -> bool {
         assert_eq!(self.running, false);
 
@@ -562,8 +566,8 @@ impl ReliableSystem {
             println!("Local sequence {} exists in Sent Queue!", self.local_sequence);
         }
 
-        assert!(self.sentQueue.exists(self.local_sequence), false);
-        assert!(self.pendingAckQueue.exists(self.local_sequence), false);
+        assert_eq!(self.sentQueue.exists(self.local_sequence), false);
+        assert_eq!(self.pendingAckQueue.exists(self.local_sequence), false);
 
         let mut data = PacketData {
             sequence : self.local_sequence,
@@ -1007,6 +1011,19 @@ impl ReliableConnection {
 
     pub fn SetDestination(&mut self, addr: Address) {
         self.connection.SetAddress(addr);
+    }
+
+    pub fn Start(&mut self) -> bool {
+        self.connection.Start()
+    }
+
+    pub fn Listen(&mut self) {
+        self.connection.Listen()
+    }
+
+    pub fn Connection(&mut self) {
+        let address = &self.connection.GetAddress();
+        self.connection.Connect(address)
     }
 }
 

@@ -77,6 +77,13 @@ fn main() {
 
     let mut reliable_connection = mynet::ReliableConnection::new(0x4C494645, 6000000.0, 0xFFFFFFFF, mynet::Port::Server as u16);
 
+    let connection_started = reliable_connection.Start();
+
+    if connection_started == false {
+        panic!("Error: Could not start connection.")
+    }
+
+    reliable_connection.Listen();
     //reliable_connection.connection.address = net::Address::new( std::net::Ipv4Addr::new(127, 0, 0, 1) , net::Port::Client as u16);
 
     loop {
@@ -88,7 +95,9 @@ fn main() {
 
         let amount = reliable_connection.ReceivePacket(&mut buffer, 100*8);
 
-        println!("Data received:\n{}\n{:?}\n\n", amount, buffer);
+        if amount != 0 {
+            println!("Data received:\n{}\n{:?}\n\n", amount, buffer);
+        }
 
         thread::sleep(Duration::from_millis(1000));
     }
