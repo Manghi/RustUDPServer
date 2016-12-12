@@ -780,7 +780,7 @@ impl ReliableSystem {
     // TODO: The UpdateQueues method is not well thought out. My mostly-direct port looks pretty messy.
     // I'm thinking I can use a macro for the loop blocks.
     // Need to investigate later.
-
+/*
     pub fn UpdateQueues(&mut self) {
         let epsilon : f32 = 0.0001;
 
@@ -797,6 +797,7 @@ impl ReliableSystem {
             if self.sentQueue.queue.len() == 0 {
                 break;
             }
+            println!("SentQueue");
         }
 
         if self.receivedQueue.queue.len() != 0 {
@@ -808,9 +809,14 @@ impl ReliableSystem {
                     loop {
                         match self.receivedQueue.front() {
                             Some(recv_front_packet) => {
-                                if !sequence_more_recent(&recv_front_packet.sequence, &minimum_sequence, &self.max_sequence) {
+                                // TODO need to figure out why this things it smore recent
+                                let is_more_recent = sequence_more_recent(&recv_front_packet.sequence, &minimum_sequence, &self.max_sequence);
+                                println!("{}, {}, {}, {}", &recv_front_packet.sequence, &minimum_sequence, &self.max_sequence, is_more_recent );
+                                if !is_more_recent {
                                     let _ = self.receivedQueue.queue.pop_front();
+                                    println!("ReceivedQueue");
                                 }
+                                println!("ReceivedQueue Packet {}", recv_front_packet);
                             },
                             None => {break;},
                         }
@@ -837,6 +843,7 @@ impl ReliableSystem {
             if self.ackedQueue.queue.len() == 0 {
                 break;
             }
+            println!("AckedQueue");
         }
 
         loop {
@@ -853,9 +860,120 @@ impl ReliableSystem {
             if self.pendingAckQueue.queue.len() == 0 {
                 break;
             }
+            println!("PendingAckedQueue");
         }
 
     }
+*/
+
+pub fn UpdateQueues(&mut self) {
+    let epsilon : f32 = 0.0001;
+
+    /* println!("Sent: {}", self.sentQueue.size());
+    println!("Recv: {}", self.receivedQueue.size());
+    println!("Ack:  {}", self.receivedQueue.size());
+    println!("PAck: {}", self.receivedQueue.size());
+*/
+    loop {
+        match self.sentQueue.front() {
+            Some(sent_packet) => {
+                if sent_packet.time > self.rtt_maximum + epsilon {
+                    let _ = self.sentQueue.queue.pop_front();
+                } else {
+                    break;
+                }
+            },
+            None => {break;}
+        }
+
+        if self.sentQueue.queue.len() == 0 {
+            break;
+        }
+    //    println!("SentQueue");
+    }
+
+    if self.receivedQueue.queue.len() != 0 {
+        match self.receivedQueue.back() {
+            Some(received_packet) => {
+                let latest_sequence = received_packet.sequence;
+
+                let minimum_sequence = if latest_sequence >= 34  {
+                    latest_sequence - 34
+                } else {
+                    self.max_sequence - (34 - latest_sequence)
+                 };
+
+                let mut i=0;
+                loop {
+
+                    match self.receivedQueue.front() {
+                        Some(recv_front_packet) => {
+                            // TODO need to figure out why this things it smore recent
+                            let is_more_recent = !sequence_more_recent(&recv_front_packet.sequence, &minimum_sequence, &self.max_sequence);
+                            //println!("{}, {}, {}, {}", &recv_front_packet.sequence, &minimum_sequence, &self.max_sequence, is_more_recent );
+
+                            if is_more_recent {
+                                let _ = self.receivedQueue.queue.pop_front();
+                                //println!("ReceivedQueue");
+                            }
+                            else {
+                                break;
+                            }
+                            //println!("ReceivedQueue Packet {}", recv_front_packet);
+                        },
+                        None => {break;},
+                    }
+
+                    if self.receivedQueue.queue.len() == 0 {
+                        break;
+                    }
+
+                }
+            },
+            None => {},
+        }
+    }
+
+    loop {
+        match self.ackedQueue.front() {
+            Some(acked_packet) => {
+                if acked_packet.time > (self.rtt_maximum*2.0) - epsilon {
+                    let _ = self.ackedQueue.queue.pop_front();
+                }
+                else {
+                    break;
+                }
+            },
+            None => {break;},
+        }
+
+        if self.ackedQueue.queue.len() == 0 {
+            break;
+        }
+        //println!("AckedQueue");
+    }
+
+    loop {
+        match self.pendingAckQueue.front() {
+            Some(pending_ack_packet) => {
+                if pending_ack_packet.time > self.rtt_maximum + epsilon {
+                    let _ = self.pendingAckQueue.queue.pop_front();
+                    self.lost_packets += 1;
+                }
+                else {
+                    break;
+                }
+            },
+            None => {break;},
+        }
+
+        if self.pendingAckQueue.queue.len() == 0 {
+            break;
+        }
+        //println!("PendingAckedQueue");
+    }
+
+}
 
     pub fn UpdateStats(&mut self) {
         let mut sent_bytes_per_second: f32 = 0.0;
@@ -879,9 +997,9 @@ impl ReliableSystem {
 
         self.sent_bandwidth = sent_bytes_per_second * (8.0/1000.0);
         self.acked_bandwidth = acked_bytes_per_second * (8.0/1000.0);
+
+        //println!("{}, {}", self.sent_bandwidth, self.acked_bandwidth);
     }
-
-
 
 }
 
@@ -925,7 +1043,7 @@ impl ReliableConnection {
     }
 
 
-    pub fn SendPacket(&mut self, data: Vec<u32>, size: usize) -> bool {
+    pub fn SendPacket(&mut self, data: Vec<u8>, size: usize) -> bool {
         let mut packet_to_send = Packet::Packet::new();
 
         packet_to_send.set_signature(self.connection.Get_Protocol_Id());
@@ -933,6 +1051,7 @@ impl ReliableConnection {
         packet_to_send.set_ack(self.reliability_system.get_remote_sequence());
         packet_to_send.set_ackbit(self.reliability_system.GenerateAckBits());
 
+        packet_to_send.set_data(data);
 
         let encoded_packet : Vec<u8>;
 
@@ -1021,10 +1140,31 @@ impl ReliableConnection {
         self.connection.Listen()
     }
 
-    pub fn Connection(&mut self) {
+    pub fn Connect(&mut self) {
         let address = &self.connection.GetAddress();
         self.connection.Connect(address)
     }
+
+    pub fn PrintStats(&self) {
+        let sent_packets = self.reliability_system.get_acked_packets();
+        let acked_packets = self.reliability_system.get_acked_packets();
+        let lost_packets = self.reliability_system.get_lost_packets();
+
+        let rtt = self.reliability_system.get_round_trip_time();
+        let sent_bandwidth = self.reliability_system.get_sent_bandwidth();
+        let acked_packets = self.reliability_system.get_acked_bandwidth();
+
+        let lost = if sent_packets > 0 {
+            (lost_packets as f32 / sent_packets as f32) * 100.0
+        }
+        else {
+            0.0
+        };
+
+        println!("rtt {}ms, sent {}, acked {}, lost {} ({}), sent bandwidth = {}kbps, acked bandwidth = {}kbps\n",
+                rtt*1000.0, sent_packets, acked_packets, lost_packets, lost, sent_bandwidth, acked_packets);
+    }
+
 }
 
 
@@ -1188,23 +1328,31 @@ impl PacketQueue {
         let mut iterator = self.queue.iter();
 
         let mut previous = iterator.clone().last();
-        let mut previousPacket = previous.unwrap();
+        let mut previousPacket;
 
-        loop {
-            match iterator.next() {
-                Some(nextPacketData) => {
-                    assert!(nextPacketData.sequence <= max_sequence);
+        match previous {
+            Some(m) => {
+                previousPacket = m;
 
-                    if nextPacketData != previousPacket  {
-                        assert!( sequence_more_recent(&(nextPacketData.sequence), &(previousPacket.sequence), &max_sequence) );
-                        previousPacket = nextPacketData;
+                loop {
+                    match iterator.next() {
+                        Some(nextPacketData) => {
+                            assert!(nextPacketData.sequence <= max_sequence);
+
+                            if nextPacketData != previousPacket  {
+                                assert!( sequence_more_recent(&(nextPacketData.sequence), &(previousPacket.sequence), &max_sequence) );
+                                previousPacket = nextPacketData;
+                            }
+                        },
+                        None => {
+                            break;
+                        },
                     }
-                },
-                None => {
-                    break;
-                },
-            }
+                }
+            },
+            None => {},
         }
+
     }
 
     pub fn get_packet(&self, index: usize) -> option::Option<&PacketData> {

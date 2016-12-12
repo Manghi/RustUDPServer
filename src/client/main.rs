@@ -255,28 +255,6 @@ fn net_buffer_handler(skt: &mio::udp::UdpSocket,
     }
 }
 
-fn listen_on_socket(listen_addr: &net::SocketAddrV4) {
-    let skt = socket(net::SocketAddr::V4(*listen_addr));
-    let mut buf = [0u8; 1024 * 16];
-
-    loop {
-        match skt.recv_from(&mut buf) {
-            Ok(Some((len, addr))) => {
-                info!("Length: {}, Addr: {}", len, addr);
-
-                let data = Vec::from(&buf[0..len]);
-
-                let decoded: Packet = bincode::rustc_serialize::decode(&data[..]).unwrap();
-
-                info!("{:?}", decoded);
-            },
-            Ok(None) => {},
-            Err(_) => {
-                debug!("Failed... No data to receive.");
-            }
-        }
-    }
-}
 
 fn main() {
     match env_logger::init() {
@@ -347,10 +325,10 @@ fn main() {
         panic!("Error: Could not start reliable connection.")
     }
 
-    reliable_connection.Connection();
+    reliable_connection.Connect();
 
-    loop {
-        let mut buffer = Vec::<u32>::new();
+    for x in 0..0xFF {
+        let mut buffer = Vec::<u8>::new();
         for n in 0..100 {
 
             buffer.push(n);
@@ -362,8 +340,12 @@ fn main() {
             panic!("I couldn't send the packet :()");
         }
 
-        thread::sleep(Duration::from_millis(1000));
+        reliable_connection.Update(0.0003);
+
+        //thread::sleep(Duration::from_millis(20));
     }
+
+    reliable_connection.PrintStats();
 
     println!("Exiting client..");
 }

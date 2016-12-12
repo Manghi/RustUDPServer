@@ -75,8 +75,9 @@ fn main() {
     use std::time::Duration;
     use std::thread;
 
-    let mut reliable_connection = mynet::ReliableConnection::new(0x4C494645, 6000000.0, 0xFFFFFFFF, mynet::Port::Server as u16);
+    const DELTA_TIME : f32 = 0.1/30.0;
 
+    let mut reliable_connection = mynet::ReliableConnection::new(0x4C494645, 6000000.0, 0xFFFFFFFF, mynet::Port::Server as u16);
     let connection_started = reliable_connection.Start();
 
     if connection_started == false {
@@ -85,20 +86,20 @@ fn main() {
 
     reliable_connection.Listen();
     //reliable_connection.connection.address = net::Address::new( std::net::Ipv4Addr::new(127, 0, 0, 1) , net::Port::Client as u16);
-
+    let mut i = 0;
     loop {
-        let mut buffer = Vec::<u8>::with_capacity(100);
-    //    for n in 0..100 {
-//
-//            buffer.insert(n, n as u8)
-//        }
+        let mut buffer = Vec::<u8>::with_capacity(200);
 
         let amount = reliable_connection.ReceivePacket(&mut buffer, 100*8);
 
         if amount != 0 {
-            println!("Data received:\n{}\n{:?}\n\n", amount, buffer);
+            //println!("Data received:\n{}\n{:?}\n\n", amount, buffer);
         }
 
-        thread::sleep(Duration::from_millis(1000));
+        reliable_connection.Update(DELTA_TIME);
+        //thread::sleep(Duration::from_millis(20));
+        if i % 500 == 0 {
+            reliable_connection.PrintStats();
+        }
     }
 }
