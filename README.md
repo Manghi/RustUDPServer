@@ -1,6 +1,7 @@
 # RustUDPServer
 
-Simple UDPServer for preliminary protocol testing
+Simple UDPServer for preliminary protocol testing.
+
 Not functional.
 
 ```Rust
